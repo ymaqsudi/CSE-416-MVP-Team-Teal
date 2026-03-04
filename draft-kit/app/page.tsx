@@ -1,65 +1,153 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Users, DollarSign, Trophy, ChevronRight } from "lucide-react";
 
-export default function Home() {
+const mockLeague = {
+  name: "McKenna Fantasy Baseball 2026",
+  teams: 12,
+  budget: 260,
+  remainingBudget: 191,
+  rosterSlots: 23,
+  filledSlots: 4,
+  draftStatus: "In Progress" as const,
+};
+
+const quickLinks = [
+  {
+    label: "All Players",
+    href: "/players",
+    description: "Browse and search available players",
+  },
+  {
+    label: "My Roster",
+    href: "/roster",
+    description: "View your current roster and budget",
+  },
+  { label: "Live Draft", href: "/draft", description: "Enter the draft room" },
+];
+
+export default function HomePage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">
+          {mockLeague.name}
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {mockLeague.draftStatus} · {mockLeague.teams} teams · $
+          {mockLeague.budget} budget
+        </p>
+      </div>
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="flex items-center gap-4 pt-6">
+            <div className="p-2 rounded-md bg-primary/10">
+              <DollarSign className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Remaining Budget</p>
+              <p className="text-2xl font-bold text-primary">
+                ${mockLeague.remainingBudget}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex items-center gap-4 pt-6">
+            <div className="p-2 rounded-md bg-primary/10">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Roster Slots</p>
+              <p className="text-2xl font-bold text-foreground">
+                {mockLeague.filledSlots}
+                <span className="text-muted-foreground text-lg font-normal">
+                  /{mockLeague.rosterSlots}
+                </span>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex items-center gap-4 pt-6">
+            <div className="p-2 rounded-md bg-primary/10">
+              <Trophy className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Draft Status</p>
+              <p className="text-2xl font-bold text-foreground">
+                {mockLeague.draftStatus}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator />
+
+      {/* League Settings */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold text-foreground">
+          League Settings
+        </h2>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-sm">
+              <div>
+                <p className="text-muted-foreground">Teams</p>
+                <p className="font-semibold mt-0.5">{mockLeague.teams}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Starting Budget</p>
+                <p className="font-semibold mt-0.5">${mockLeague.budget}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Roster Size</p>
+                <p className="font-semibold mt-0.5">
+                  {mockLeague.rosterSlots} slots
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Format</p>
+                <p className="font-semibold mt-0.5">Auction</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Separator />
+
+      {/* Quick Links */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-semibold text-foreground">Quick Access</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {quickLinks.map((link) => (
+            <Link key={link.href} href={link.href}>
+              <Card className="hover:border-primary/50 hover:bg-muted/30 transition-all cursor-pointer h-full">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center justify-between">
+                    {link.label}
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    {link.description}
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }
