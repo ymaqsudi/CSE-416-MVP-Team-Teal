@@ -99,7 +99,7 @@ This app consumes the Player Valuation API. Once the SDK is ready, the following
 - `getPlayers()` → All Players page
 - `getPlayer(id)` → Player Detail page
 - `getValuation(id)` → Player Detail valuation card
-- `getTransactions()` → Transaction Notifications (owned by Zach)
+- `getTransactions()` → Transaction Notifications
 
 The mock data in `lib/mock-data.ts` will be replaced by real API calls at that point.
 
