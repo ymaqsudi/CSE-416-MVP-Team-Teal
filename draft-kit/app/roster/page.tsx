@@ -113,7 +113,7 @@ export default function RosterPage() {
                       </div>
                     </div>
                     <span className="font-bold text-primary">
-                      ${player.estimatedValue}
+                      {/* ${player.estimatedValue} */}
                     </span>
                   </div>
                 ) : (
