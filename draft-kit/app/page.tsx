@@ -26,6 +26,11 @@ const quickLinks = [
     description: "View your current roster and budget",
   },
   { label: "Live Draft", href: "/draft", description: "Enter the draft room" },
+  {
+    label: "View Transactions",
+    href: "/transactions",
+    description: "See the latest updates to MLB rosters",
+  },
 ];
 
 export default function HomePage() {
@@ -128,7 +133,7 @@ export default function HomePage() {
       {/* Quick Links */}
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-foreground">Quick Access</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           {quickLinks.map((link) => (
             <Link key={link.href} href={link.href}>
               <Card className="hover:border-primary/50 hover:bg-muted/30 transition-all cursor-pointer h-full">

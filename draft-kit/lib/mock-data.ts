@@ -13,6 +13,12 @@ export interface Player {
   isEligible: boolean;
 }
 
+export interface Transaction {
+  id: number;
+  date: string;
+  transaction: string;
+}
+
 export const mockPlayers: Player[] = [
   {
     id: "1",
@@ -213,5 +219,48 @@ export const mockPlayers: Player[] = [
     depthStatus: "starter",
     estimatedValue: 29,
     isEligible: true,
+  },
+];
+
+export const mockTransactions: Transaction[] = [
+  {
+    id: 1,
+    date: "2026-03-08T14:30:00Z",
+    transaction: "Shohei Ohtani signed 2-year extension with LAD - $20M/year",
+  },
+  {
+    id: 2,
+    date: "2026-03-07T09:15:00Z",
+    transaction: "Kyle Tucker traded from CHC to NYY for 3 prospects",
+  },
+  {
+    id: 3,
+    date: "2026-03-06T16:45:00Z",
+    transaction: "Gunnar Henderson placed on 60-day IL with shoulder injury",
+  },
+  {
+    id: 4,
+    date: "2026-03-05T11:20:00Z",
+    transaction: "Francisco Lindor re-signed with NYM - 5 years, $115M",
+  },
+  {
+    id: 5,
+    date: "2026-03-04T18:00:00Z",
+    transaction: "Yordan Alvarez activated from IL, cleared to play",
+  },
+  {
+    id: 6,
+    date: "2026-03-03T13:30:00Z",
+    transaction: "Randy Arozarena acquired by BOS in trade with SEA",
+  },
+  {
+    id: 7,
+    date: "2026-03-02T10:45:00Z",
+    transaction: "Gerrit Cole signs 1-year deal with NYY - $15M incentives",
+  },
+  {
+    id: 8,
+    date: "2026-03-01T15:20:00Z",
+    transaction: "José Ramírez out 4-6 weeks with hamstring strain",
   },
 ];

@@ -10,6 +10,7 @@ const navLinks = [
   { label: "Players", href: "/players" },
   { label: "Roster", href: "/roster" },
   { label: "Draft", href: "/draft" },
+  { label: "Transactions", href: "/transactions" },
 ];
 
 export function Navbar() {
