@@ -29,14 +29,16 @@ const ALL_POSITIONS: Position[] = [
   "3B",
   "SS",
   "OF",
-  "SP",
-  "RP",
+  "MI",
+  "CI",
+  "U",
+  "P",
 ];
 
 const riskColors: Record<string, string> = {
-  low: "bg-green-100 text-green-800 border-green-200",
-  medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  high: "bg-red-100 text-red-800 border-red-200",
+  Low: "bg-green-100 text-green-800 border-green-200",
+  Med: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  High: "bg-red-100 text-red-800 border-red-200",
 };
 
 export default function PlayersPage() {
@@ -47,7 +49,7 @@ export default function PlayersPage() {
     return mockPlayers.filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.mlbTeam.toLowerCase().includes(search.toLowerCase());
+        (p.mlbTeam ?? "").toLowerCase().includes(search.toLowerCase());
       const matchesPosition =
         position === "All" || p.positions.includes(position);
       return matchesSearch && matchesPosition;
@@ -131,7 +133,7 @@ export default function PlayersPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="text-muted-foreground font-mono text-sm">
-                    {player.mlbTeam}
+                    {player.mlbTeam ?? "—"}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1 flex-wrap">
@@ -143,14 +145,18 @@ export default function PlayersPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span
-                      className={`text-xs font-medium px-2 py-0.5 rounded-full border ${riskColors[player.riskLevel]}`}
-                    >
-                      {player.riskLevel}
-                    </span>
+                    {player.risk ? (
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full border ${riskColors[player.risk]}`}
+                      >
+                        {player.risk}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right font-bold text-primary">
-                    ${player.estimatedValue}
+                    —
                   </TableCell>
                 </TableRow>
               ))

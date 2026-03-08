@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { mockPlayers } from "@/lib/mock-data";
+import { mockPlayers, mockValuations } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,17 +10,9 @@ import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, AlertTriangle, TrendingUp } from "lucide-react";
 
 const riskColors: Record<string, string> = {
-  low: "bg-green-100 text-green-800 border-green-200",
-  medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  high: "bg-red-100 text-red-800 border-red-200",
-};
-
-const mockValuation = {
-  estimatedDollarValue: 0,
-  valuationLabel: "fair" as "overpay" | "fair" | "underpay",
-  explanation:
-    "Strong track record with elite contact rate and positional scarcity at this tier.",
-  lastUpdated: "2026-03-04",
+  Low: "bg-green-100 text-green-800 border-green-200",
+  Med: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  High: "bg-red-100 text-red-800 border-red-200",
 };
 
 const valuationColors = {
@@ -42,6 +34,7 @@ export default function PlayerDetailPage({
 }) {
   const { id } = use(params);
   const player = mockPlayers.find((p) => p.id === id);
+  const valuation = mockValuations[id];
 
   if (!player) {
     return (
@@ -55,11 +48,6 @@ export default function PlayerDetailPage({
       </div>
     );
   }
-
-  const valuation = {
-    ...mockValuation,
-    estimatedDollarValue: player.estimatedValue,
-  };
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -76,7 +64,7 @@ export default function PlayerDetailPage({
           <h1 className="text-3xl font-bold text-foreground">{player.name}</h1>
           <div className="flex items-center gap-2 mt-2">
             <span className="text-muted-foreground font-mono font-medium">
-              {player.mlbTeam}
+              {player.mlbTeam ?? "—"}
             </span>
             <Separator orientation="vertical" className="h-4" />
             <div className="flex gap-1">
@@ -86,19 +74,23 @@ export default function PlayerDetailPage({
                 </Badge>
               ))}
             </div>
-            <Separator orientation="vertical" className="h-4" />
-            <span
-              className={`text-xs font-medium px-2 py-0.5 rounded-full border ${riskColors[player.riskLevel]}`}
-            >
-              {player.riskLevel} risk
-            </span>
+            {player.risk && (
+              <>
+                <Separator orientation="vertical" className="h-4" />
+                <span
+                  className={`text-xs font-medium px-2 py-0.5 rounded-full border ${riskColors[player.risk]}`}
+                >
+                  {player.risk} risk
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       <Separator />
 
-      {/* Valuation Card — the core MVP interaction */}
+      {/* Valuation Card */}
       <Card className="border-2 border-primary/20 bg-primary/5">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-primary">
@@ -107,30 +99,41 @@ export default function PlayerDetailPage({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-end gap-2">
-            <span className="text-5xl font-bold text-primary">
-              ${valuation.estimatedDollarValue}
-            </span>
-            <span className="text-muted-foreground mb-1">
-              estimated auction value
-            </span>
-          </div>
-          <div
-            className={`text-sm font-medium px-3 py-2 rounded-md border ${valuationColors[valuation.valuationLabel]}`}
-          >
-            {valuationLabels[valuation.valuationLabel]}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {valuation.explanation}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Last updated: {valuation.lastUpdated}
-          </p>
+          {valuation ? (
+            <>
+              <div className="flex items-end gap-2">
+                <span className="text-5xl font-bold text-primary">
+                  ${valuation.dollarValue}
+                </span>
+                <span className="text-muted-foreground mb-1">
+                  estimated auction value
+                </span>
+              </div>
+              <div
+                className={`text-sm font-medium px-3 py-2 rounded-md border ${valuationColors.fair}`}
+              >
+                {valuationLabels.fair}
+              </div>
+              {valuation.explanation && (
+                <p className="text-sm text-muted-foreground">
+                  {valuation.explanation}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Last updated:{" "}
+                {new Date(valuation.updatedAt).toLocaleDateString()}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Valuation not available.
+            </p>
+          )}
         </CardContent>
       </Card>
 
       {/* Risk Warning */}
-      {player.riskLevel === "high" && (
+      {player.risk === "High" && (
         <Card className="border-yellow-200 bg-yellow-50">
           <CardContent className="flex items-start gap-3 pt-4">
             <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
@@ -155,13 +158,11 @@ export default function PlayerDetailPage({
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">MLB Team</p>
-              <p className="font-medium mt-0.5">{player.mlbTeam}</p>
+              <p className="font-medium mt-0.5">{player.mlbTeam ?? "—"}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Depth Status</p>
-              <p className="font-medium mt-0.5 capitalize">
-                {player.depthStatus}
-              </p>
+              <p className="text-muted-foreground">Depth Role</p>
+              <p className="font-medium mt-0.5">{player.depthRole ?? "—"}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Positions</p>
@@ -170,11 +171,9 @@ export default function PlayerDetailPage({
               </p>
             </div>
             <div>
-              <p className="text-muted-foreground">Eligibility</p>
-              <p
-                className={`font-medium mt-0.5 ${player.isEligible ? "text-green-600" : "text-red-600"}`}
-              >
-                {player.isEligible ? "Eligible" : "Ineligible"}
+              <p className="text-muted-foreground">Bats / Throws</p>
+              <p className="font-medium mt-0.5">
+                {player.bats ?? "—"} / {player.throws ?? "—"}
               </p>
             </div>
           </div>
