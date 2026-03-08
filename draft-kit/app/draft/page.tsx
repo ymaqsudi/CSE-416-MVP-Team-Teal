@@ -68,7 +68,7 @@ export default function DraftPage() {
                 <div className="text-right">
                   <p className="text-sm text-muted-foreground">Est. Value</p>
                   <p className="text-2xl font-bold text-primary">
-                    ${mockDraftState.nominatedPlayer.estimatedValue}
+                    {/* ${mockDraftState.nominatedPlayer.estimatedValue} */}
                   </p>
                 </div>
               </div>
