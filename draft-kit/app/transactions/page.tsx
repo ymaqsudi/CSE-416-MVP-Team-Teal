@@ -50,7 +50,7 @@ export default function TransactionsPage() {
                   <TableCell className="font-mono text-sm">
                     {formatDate(transaction.date)}
                   </TableCell>
-                  <TableCell>{transaction.transaction}</TableCell>
+                  <TableCell>{transaction.title}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

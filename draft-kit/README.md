@@ -10,17 +10,31 @@ Built with Next.js, TypeScript, and Tailwind CSS. Deployed on Vercel.
 
 ## What's Built (MVP)
 
-| Page                | Route             | Status |
-| ------------------- | ----------------- | ------ |
-| Home / League Setup | `/`               | Done   |
-| Login               | `/login`          | Done   |
-| Create Account      | `/create-account` | Done   |
-| All Players         | `/players`        | Done   |
-| Player Detail       | `/players/[id]`   | Done   |
-| Roster Screen       | `/roster`         | Done   |
-| Live Draft Shell    | `/draft`          | Done   |
+| Page                      | Route             | Status   |
+| ------------------------- | ----------------- | -------- |
+| Home / League Setup       | `/`               | Done     |
+| Login                     | `/login`          | Done     |
+| Create Account            | `/create-account` | Done     |
+| All Players               | `/players`        | Live API |
+| Player Detail + Valuation | `/players/[id]`   | Live API |
+| Roster Screen             | `/roster`         | Done     |
+| Live Draft Shell          | `/draft`          | Done     |
+| Transactions              | `/transactions`   | Done     |
 
-All pages currently use mock data. API integration will be wired once the Player Valuation API is deployed.
+---
+
+## Integration Status
+
+The Draft Kit is fully integrated with the deployed Player Valuation API.
+
+| SDK Method          | Page          | Status  |
+| ------------------- | ------------- | ------- |
+| `getPlayers()`      | All Players   | Wired   |
+| `getPlayer(id)`     | Player Detail | Wired   |
+| `getValuation(id)`  | Player Detail | Wired   |
+| `getTransactions()` | Transactions  | Pending |
+
+**Note on shared layer:** The `@tealcore/shared` types and API client are copied directly into `lib/shared/` rather than installed as a package. This is due to an ES module compatibility issue with Next.js and local package installs. The logic is the same as the shared/ folder sdk, this will be cleaned up in a future sprint by publishing the shared package properly.
 
 ---
 
@@ -61,11 +75,9 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 Create a `.env.local` file inside `draft-kit/`:
 
 ```
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
-NEXT_PUBLIC_API_KEY=dev-key
+NEXT_PUBLIC_API_BASE_URL=https://cse-416-mvp-team-teal.onrender.com
+NEXT_PUBLIC_API_KEY=mvp-teal-secret-key
 ```
-
-Once we deploy the API, update `NEXT_PUBLIC_API_BASE_URL` to the real Render URL. The Vercel deployment environment variables will also need to be updated at that point.
 
 ---
 
@@ -74,39 +86,45 @@ Once we deploy the API, update `NEXT_PUBLIC_API_BASE_URL` to the real Render URL
 ```
 draft-kit/
 ├── app/
-│   ├── layout.tsx           # Global layout + navbar
-│   ├── page.tsx             # Home / League Setup
-│   ├── login/               # Login page
-│   ├── create-account/      # Create Account page
-│   ├── players/             # All Players page
-│   │   └── [id]/            # Player Detail page
-│   ├── roster/              # Roster Screen
-│   └── draft/               # Live Draft shell
+│   ├── layout.tsx              # Global layout + navbar
+│   ├── page.tsx                # Home / League Setup
+│   ├── login/                  # Login page
+│   ├── create-account/         # Create Account page
+│   ├── players/                # All Players page (live API)
+│   │   └── [id]/               # Player Detail + Valuation (live API)
+│   ├── roster/                 # Roster Screen
+│   ├── draft/                  # Live Draft shell
+│   └── transactions/           # Transaction Notifications
 ├── components/
-│   ├── navbar.tsx           # Top navigation bar
-│   └── ui/                  # shadcn/ui components
+│   ├── navbar.tsx              # Top navigation bar
+│   └── ui/                     # shadcn/ui components
 ├── lib/
-│   └── mock-data.ts         # Placeholder data (replaced by API later)
-└── .env.local               # Local env vars (never committed)
+│   ├── api.ts                  # API client instance
+│   ├── mock-data.ts            # Mock data for non-integrated pages
+│   └── shared/                 # Local copy of @tealcore/shared
+│       ├── types.ts            # Shared TypeScript types
+│       └── apiClient.ts        # Typed API client
+└── .env.local                  # Local env vars (never committed)
 ```
 
 ---
 
-## API Integration (Coming Next)
+## Demo Flow
 
-This app consumes the Player Valuation API. Once the SDK is ready, the following will be added:
+The core MVP interaction sequence:
 
-- `getPlayers()` → All Players page
-- `getPlayer(id)` → Player Detail page
-- `getValuation(id)` → Player Detail valuation card
-- `getTransactions()` → Transaction Notifications
-
-The mock data in `lib/mock-data.ts` will be replaced by real API calls at that point.
+1. Open https://cse-416-mvp-team-teal.vercel.app
+2. Navigate to **Players**
+3. Search for a player by name or team
+4. Click a player
+5. View real player detail and live valuation from the deployed API
 
 ---
 
 ## Notes
 
-- The navbar is hidden on `/login` and `/create-account` by design
-- Color theme is teal — defined via CSS variables in `app/globals.css`
+- Navbar is hidden on `/login` and `/create-account` by design
+- Color theme is teal
+- Roster and Draft pages use mock data — full wiring comes in a later sprint
 - Do not commit `.env.local` — it is gitignored
+- Render (API host) may have a cold start delay of ~30s if inactive

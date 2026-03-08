@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { mockPlayers, Player, Position } from "@/lib/mock-data";
+import { Player, Position } from "@/lib/shared/types";
+import { apiClient } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 
 const ALL_POSITIONS: Position[] = [
   "C",
@@ -42,11 +43,31 @@ const riskColors: Record<string, string> = {
 };
 
 export default function PlayersPage() {
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [position, setPosition] = useState<Position | "All">("All");
 
+  useEffect(() => {
+    async function fetchPlayers() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await apiClient.getPlayers();
+        setPlayers(res.players);
+      } catch (e) {
+        setError("Failed to load players. Please try again.");
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchPlayers();
+  }, []);
+
   const filtered = useMemo(() => {
-    return mockPlayers.filter((p) => {
+    return players.filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         (p.mlbTeam ?? "").toLowerCase().includes(search.toLowerCase());
@@ -54,7 +75,7 @@ export default function PlayersPage() {
         position === "All" || p.positions.includes(position);
       return matchesSearch && matchesPosition;
     });
-  }, [search, position]);
+  }, [players, search, position]);
 
   return (
     <div className="space-y-6">
@@ -62,7 +83,7 @@ export default function PlayersPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">All Players</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {filtered.length} players available
+          {loading ? "Loading..." : `${filtered.length} players available`}
         </p>
       </div>
 
@@ -73,10 +94,11 @@ export default function PlayersPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
+          disabled={loading}
         />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="min-w-32">
+            <Button variant="outline" className="min-w-32" disabled={loading}>
               {position === "All" ? "All Positions" : position}
               <ChevronDown className="ml-2 h-4 w-4" />
             </Button>
@@ -94,6 +116,13 @@ export default function PlayersPage() {
         </DropdownMenu>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {error}
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-md border border-border">
         <Table>
@@ -103,13 +132,17 @@ export default function PlayersPage() {
               <TableHead className="font-semibold">Team</TableHead>
               <TableHead className="font-semibold">Position(s)</TableHead>
               <TableHead className="font-semibold">Risk</TableHead>
-              <TableHead className="font-semibold text-right">
-                Est. Value
-              </TableHead>
+              <TableHead className="font-semibold">Depth Role</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 ? (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-12">
+                  <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
+                </TableCell>
+              </TableRow>
+            ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={5}
@@ -155,8 +188,8 @@ export default function PlayersPage() {
                       <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right font-bold text-primary">
-                    —
+                  <TableCell className="text-muted-foreground text-sm">
+                    {player.depthRole ?? "—"}
                   </TableCell>
                 </TableRow>
               ))

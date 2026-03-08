@@ -1,30 +1,19 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { mockPlayers, mockValuations } from "@/lib/mock-data";
+import { Player, Valuation } from "@/lib/shared/types";
+import { apiClient } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, AlertTriangle, TrendingUp } from "lucide-react";
+import { ArrowLeft, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
 
 const riskColors: Record<string, string> = {
   Low: "bg-green-100 text-green-800 border-green-200",
   Med: "bg-yellow-100 text-yellow-800 border-yellow-200",
   High: "bg-red-100 text-red-800 border-red-200",
-};
-
-const valuationColors = {
-  overpay: "bg-red-50 border-red-200 text-red-800",
-  fair: "bg-green-50 border-green-200 text-green-800",
-  underpay: "bg-blue-50 border-blue-200 text-blue-800",
-};
-
-const valuationLabels = {
-  overpay: "⚠ Overpay Risk",
-  fair: "✓ Fair Value",
-  underpay: "↓ Potential Underpay",
 };
 
 export default function PlayerDetailPage({
@@ -33,10 +22,42 @@ export default function PlayerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const player = mockPlayers.find((p) => p.id === id);
-  const valuation = mockValuations[id];
 
-  if (!player) {
+  const [player, setPlayer] = useState<Player | null>(null);
+  const [valuation, setValuation] = useState<Valuation | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const [playerRes, valuationRes] = await Promise.all([
+          apiClient.getPlayer(id),
+          apiClient.getValuation(id),
+        ]);
+        setPlayer(playerRes.player);
+        setValuation(valuationRes.valuation);
+      } catch (e) {
+        setError("Failed to load player. Please try again.");
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error || !player) {
     return (
       <div className="space-y-4">
         <Button variant="ghost" size="sm" asChild>
@@ -44,7 +65,9 @@ export default function PlayerDetailPage({
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Players
           </Link>
         </Button>
-        <p className="text-muted-foreground">Player not found.</p>
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {error ?? "Player not found."}
+        </div>
       </div>
     );
   }
@@ -59,32 +82,30 @@ export default function PlayerDetailPage({
       </Button>
 
       {/* Player Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">{player.name}</h1>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-muted-foreground font-mono font-medium">
-              {player.mlbTeam ?? "—"}
-            </span>
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex gap-1">
-              {player.positions.map((pos) => (
-                <Badge key={pos} variant="outline" className="text-xs">
-                  {pos}
-                </Badge>
-              ))}
-            </div>
-            {player.risk && (
-              <>
-                <Separator orientation="vertical" className="h-4" />
-                <span
-                  className={`text-xs font-medium px-2 py-0.5 rounded-full border ${riskColors[player.risk]}`}
-                >
-                  {player.risk} risk
-                </span>
-              </>
-            )}
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">{player.name}</h1>
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <span className="text-muted-foreground font-mono font-medium">
+            {player.mlbTeam ?? "—"}
+          </span>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex gap-1 flex-wrap">
+            {player.positions.map((pos) => (
+              <Badge key={pos} variant="outline" className="text-xs">
+                {pos}
+              </Badge>
+            ))}
           </div>
+          {player.risk && (
+            <>
+              <Separator orientation="vertical" className="h-4" />
+              <span
+                className={`text-xs font-medium px-2 py-0.5 rounded-full border ${riskColors[player.risk]}`}
+              >
+                {player.risk} risk
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -108,11 +129,6 @@ export default function PlayerDetailPage({
                 <span className="text-muted-foreground mb-1">
                   estimated auction value
                 </span>
-              </div>
-              <div
-                className={`text-sm font-medium px-3 py-2 rounded-md border ${valuationColors.fair}`}
-              >
-                {valuationLabels.fair}
               </div>
               {valuation.explanation && (
                 <p className="text-sm text-muted-foreground">
