@@ -53,3 +53,36 @@ export interface ValuationResponse {
 export interface TransactionsResponse {
   transactions: Transaction[];
 }
+
+
+export interface LeagueSettings {
+  leagueName: string;
+  numTeams: number;
+  budget: number;
+  // keep very flexible for MVP
+  rosterSlots?: string[];
+  categories?: string[];
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  budgetRemaining?: number;
+  maxBid?: number;
+}
+
+export interface RosterSlot {
+  position: string;     // keep as string for MVP to avoid UTIL/SP/RP issues
+  playerId?: string | null;
+  price?: number | null;
+}
+
+export interface DraftPick {
+  id: string;
+  timestamp: string;    // ISO
+  teamId: string;
+  playerId: string;
+  price: number;
+  position?: string;
+  note?: string;
+}
