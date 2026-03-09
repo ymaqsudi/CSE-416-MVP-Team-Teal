@@ -40,6 +40,8 @@ export interface Valuation {
 export interface Transaction {
   id: string;
   playerId?: string;
+  playerName?: string;
+  mlbTeam?: string;
   title: string;
   date: string;
   source?: string;

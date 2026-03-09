@@ -27,6 +27,9 @@ export interface Valuation {
 export interface Transaction {
   id: string;
   playerId?: string;
+  /** Optional convenience fields resolved by the API for notifications UI */
+  playerName?: string;
+  mlbTeam?: string;
   title: string;           // e.g. "Placed on 60-day IL"
   date: string;            // ISO date
   source?: string;         // optional
