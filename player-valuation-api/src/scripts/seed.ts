@@ -10,7 +10,7 @@ import { PlayerModel } from "../models/Player.js";
 import { TransactionModel } from "../models/Transaction.js";
 
 const PLAYERS = [
-  { name: "Jarren Duran", mlbTeam: "BOS", positions: ["OF"], depthRole: "Starter", risk: "Low", baseValue: 38 },
+  { name: "Jarren Duran", mlbTeam: "BOS", positions: ["OF"], depthRole: "Starter", risk: "Med", baseValue: 38 },
   { name: "Corbin Carroll", mlbTeam: "ARI", positions: ["OF"], depthRole: "Starter", risk: "Med", baseValue: 32 },
   { name: "Gunnar Henderson", mlbTeam: "BAL", positions: ["SS", "3B"], depthRole: "Starter", risk: "Low", baseValue: 45 },
   { name: "Francisco Lindor", mlbTeam: "NYM", positions: ["SS"], depthRole: "Starter", risk: "Low", baseValue: 40 },
