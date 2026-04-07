@@ -1,10 +1,7 @@
-<<<<<<< HEAD
-import Link from "next/link";
-=======
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
->>>>>>> 2fd52c2f34dc223370daff4bd74e0600cf7f5427
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -169,14 +166,9 @@ export default function DraftPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-<<<<<<< HEAD
           <Button variant="outline" size="sm" asChild>
             <Link href="/draft-history">Draft history</Link>
           </Button>
-          <Badge className="bg-green-100 text-green-800 border-green-200 border">
-            Draft In Progress
-          </Badge>
-=======
           <Badge className="bg-green-100 text-green-800 border-green-200 border">
             Draft In Progress
           </Badge>
@@ -190,7 +182,6 @@ export default function DraftPage() {
               {undoing ? "Undoing..." : "Undo Last Pick"}
             </Button>
           )}
->>>>>>> 2fd52c2f34dc223370daff4bd74e0600cf7f5427
         </div>
       </div>
 
