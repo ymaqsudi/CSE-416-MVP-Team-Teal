@@ -11,6 +11,7 @@ const navLinks = [
   { label: "Players", href: "/players" },
   { label: "Roster", href: "/roster" },
   { label: "Draft", href: "/draft" },
+  { label: "Draft History", href: "/draft-history" },
   { label: "Transactions", href: "/transactions" },
 ];
 

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,9 +32,14 @@ export default function DraftPage() {
             Round {mockDraftState.round} · Pick {mockDraftState.pick}
           </p>
         </div>
-        <Badge className="bg-green-100 text-green-800 border-green-200 border">
-          Draft In Progress
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/draft-history">Draft history</Link>
+          </Button>
+          <Badge className="bg-green-100 text-green-800 border-green-200 border">
+            Draft In Progress
+          </Badge>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
