@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League } from "@/lib/models/League";
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 if (!JWT_SECRET) {
   throw new Error("Missing JWT_SECRET in environment variables.");
@@ -26,7 +26,7 @@ function getTokenFromRequest(request: NextRequest): string | null {
 
 function verifyToken(token: string): JwtPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JwtPayload;
+    return jwt.verify(token, JWT_SECRET) as unknown as JwtPayload;
   } catch {
     return null;
   }
@@ -34,7 +34,7 @@ function verifyToken(token: string): JwtPayload | null {
 
 export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const token = getTokenFromRequest(request);
@@ -42,7 +42,7 @@ export async function PATCH(
     if (!token) {
       return NextResponse.json(
         { error: "Missing authorization token" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -51,7 +51,7 @@ export async function PATCH(
     if (!decoded) {
       return NextResponse.json(
         { error: "Invalid or expired token" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -62,7 +62,7 @@ export async function PATCH(
     if (!leagueName || !teamCount || !budget) {
       return NextResponse.json(
         { error: "League name, team count, and budget are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -77,14 +77,11 @@ export async function PATCH(
         scoringType: scoringType ? String(scoringType) : "rotisserie",
         categories: Array.isArray(categories) ? categories : [],
       },
-      { new: true }
+      { new: true },
     );
 
     if (!updatedLeague) {
-      return NextResponse.json(
-        { error: "League not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "League not found" }, { status: 404 });
     }
 
     return NextResponse.json(
@@ -92,14 +89,14 @@ export async function PATCH(
         message: "League updated successfully",
         league: updatedLeague,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Update league route error:", error);
 
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League } from "@/lib/models/League";
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 if (!JWT_SECRET) {
   throw new Error("Missing JWT_SECRET in environment variables.");
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (!token) {
       return NextResponse.json(
         { error: "missing authorization token" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     if (!decoded) {
       return NextResponse.json(
         { error: "invalid or expired token" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     if (!leagueName || !teamCount || !budget) {
       return NextResponse.json(
         { error: "leagueName, teamCount, and budget are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -78,14 +78,14 @@ export async function POST(request: NextRequest) {
         message: "league created successfully",
         league: newLeague,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Create league route error:", error);
 
     return NextResponse.json(
       { error: "internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     if (!token) {
       return NextResponse.json(
         { error: "missing authorization token" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
     if (!decoded) {
       return NextResponse.json(
         { error: "invalid or expired token" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -122,8 +122,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       { error: "internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { User } from "@/lib/models/User";
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 if (!JWT_SECRET) {
   throw new Error("Missing JWT_SECRET in environment variables.");
@@ -18,14 +18,14 @@ export async function POST(request: NextRequest) {
     if (!email || !password) {
       return NextResponse.json(
         { error: "email and password are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (typeof email !== "string" || typeof password !== "string") {
       return NextResponse.json(
         { error: "email and password must both be strings" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -39,19 +39,19 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json(
         { error: "invalid email or password" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
     const passwordMatches = await bcrypt.compare(
       trimmedPassword,
-      user.passwordHash
+      user.passwordHash,
     );
 
     if (!passwordMatches) {
       return NextResponse.json(
         { error: "invalid email or password" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
       },
       JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     return NextResponse.json(
@@ -74,14 +74,14 @@ export async function POST(request: NextRequest) {
           email: user.email,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Login route error:", error);
 
     return NextResponse.json(
       { error: "internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
