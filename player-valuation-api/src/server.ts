@@ -5,6 +5,8 @@ import mongoose from "mongoose";
 import { apiKeyMiddleware } from "./middleware/apiKey.js";
 import playersRouter from "./routes/players.js";
 import transactionsRouter from "./routes/transactions.js";
+import sessionsRouter from "./routes/sessions.js";
+import valuationsRouter from "./routes/valuations.js";
 
 const PORT = process.env.PORT ?? 4000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -33,6 +35,8 @@ async function start() {
 
   app.use(apiKeyMiddleware);
 
+  app.use("/sessions", sessionsRouter);
+  app.use("/valuations", valuationsRouter);
   app.use("/players", playersRouter);
   app.use("/transactions", transactionsRouter);
 
