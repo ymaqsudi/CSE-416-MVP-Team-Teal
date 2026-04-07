@@ -8,6 +8,23 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ArrowLeft, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
 
 const riskColors: Record<string, string> = {
@@ -27,6 +44,16 @@ export default function PlayerDetailPage({
   const [valuation, setValuation] = useState<Valuation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Assignment dialog state
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [leagues, setLeagues] = useState<any[]>([]);
+  const [selectedLeague, setSelectedLeague] = useState<string>("");
+  const [teamName, setTeamName] = useState<string>("");
+  const [position, setPosition] = useState<string>("");
+  const [price, setPrice] = useState<string>("");
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -48,6 +75,86 @@ export default function PlayerDetailPage({
     }
     fetchData();
   }, [id]);
+
+  useEffect(() => {
+    async function fetchLeagues() {
+      if (!showAssignDialog) return;
+
+      try {
+        const token = localStorage.getItem("draftkit_token");
+        if (!token) return;
+
+        const response = await fetch("/api/leagues", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+          setLeagues(data.leagues || []);
+        }
+      } catch (e) {
+        console.error("Failed to load leagues:", e);
+      }
+    }
+    fetchLeagues();
+  }, [showAssignDialog]);
+
+  async function handleAssignPlayer() {
+    if (!player || !selectedLeague || !teamName.trim() || !position || !price) {
+      setAssignError("All fields are required");
+      return;
+    }
+
+    const token = localStorage.getItem("draftkit_token");
+    if (!token) {
+      setAssignError("You must be logged in");
+      return;
+    }
+
+    try {
+      setAssignLoading(true);
+      setAssignError(null);
+
+      const response = await fetch(`/api/players/${id}/assignment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          leagueId: selectedLeague,
+          teamName: teamName.trim(),
+          position,
+          price: Number(price),
+          playerName: player.name,
+          mlbTeam: player.mlbTeam,
+          positions: player.positions,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setAssignError(data.error || "Failed to assign player");
+        return;
+      }
+
+      // Success - close dialog and reset form
+      setShowAssignDialog(false);
+      setSelectedLeague("");
+      setTeamName("");
+      setPosition("");
+      setPrice("");
+      alert("Player assigned successfully!");
+    } catch (e) {
+      setAssignError("Something went wrong. Please try again.");
+      console.error(e);
+    } finally {
+      setAssignLoading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -148,6 +255,17 @@ export default function PlayerDetailPage({
         </CardContent>
       </Card>
 
+      {/* Assign to Roster Button */}
+      <div className="flex justify-center">
+        <Button
+          onClick={() => setShowAssignDialog(true)}
+          className="w-full max-w-sm"
+          size="lg"
+        >
+          Assign to Roster
+        </Button>
+      </div>
+
       {/* Risk Warning */}
       {player.risk === "High" && (
         <Card className="border-yellow-200 bg-yellow-50">
@@ -195,6 +313,112 @@ export default function PlayerDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      {/* Assignment Dialog */}
+      <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Player to Roster</DialogTitle>
+            <DialogDescription>
+              Assign {player?.name} to a roster position in one of your leagues.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="league">League</Label>
+              <Select value={selectedLeague} onValueChange={setSelectedLeague}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a league" />
+                </SelectTrigger>
+                <SelectContent>
+                  {leagues.map((league) => (
+                    <SelectItem key={league._id} value={league._id}>
+                      {league.leagueName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="team">Team Name</Label>
+              <Input
+                id="team"
+                placeholder="Enter team name"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="position">Position</Label>
+              <Select value={position} onValueChange={setPosition}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select position" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="C">C</SelectItem>
+                  <SelectItem value="1B">1B</SelectItem>
+                  <SelectItem value="2B">2B</SelectItem>
+                  <SelectItem value="3B">3B</SelectItem>
+                  <SelectItem value="SS">SS</SelectItem>
+                  <SelectItem value="OF">OF</SelectItem>
+                  <SelectItem value="MI">MI</SelectItem>
+                  <SelectItem value="CI">CI</SelectItem>
+                  <SelectItem value="U">U</SelectItem>
+                  <SelectItem value="P">P</SelectItem>
+                  <SelectItem value="SP">SP</SelectItem>
+                  <SelectItem value="RP">RP</SelectItem>
+                  <SelectItem value="BN">BN</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="price">Price ($)</Label>
+              <Input
+                id="price"
+                type="number"
+                placeholder="Enter price"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                min="0"
+              />
+            </div>
+
+            {assignError && (
+              <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                {assignError}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowAssignDialog(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAssignPlayer}
+                disabled={assignLoading}
+                className="flex-1"
+              >
+                {assignLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  "Assign"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
