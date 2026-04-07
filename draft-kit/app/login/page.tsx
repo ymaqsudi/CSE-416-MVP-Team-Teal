@@ -61,7 +61,7 @@ export default function LoginPage() {
       setSuccess("Login successful. Redirecting...");
 
       setTimeout(() => {
-        router.push("/");
+        window.location.href = "/";
       }, 1000);
     } catch (err) {
       console.error("Login error:", err);
