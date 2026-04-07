@@ -148,12 +148,17 @@ export default function LeagueSettingsPage() {
 
       if (!leagueId && data.league?._id) {
         setLeagueId(data.league._id);
+        localStorage.setItem("draftkit_leagueId", data.league._id);
+      }
+
+      if (leagueId) {
+        localStorage.setItem("draftkit_leagueId", leagueId);
       }
 
       setSuccess(
         leagueId
           ? "League settings updated successfully. Redirecting..."
-          : "League created successfully. Redirecting..."
+          : "League created successfully. Redirecting...",
       );
 
       setTimeout(() => {
@@ -168,14 +173,20 @@ export default function LeagueSettingsPage() {
   }
 
   if (isPageLoading) {
-    return <p className="text-sm text-muted-foreground">Loading league settings...</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        Loading league settings...
+      </p>
+    );
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-lg">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center">League Settings</CardTitle>
+          <CardTitle className="text-2xl text-center">
+            League Settings
+          </CardTitle>
           <CardDescription className="text-center">
             {leagueId
               ? "Update your current league settings"
@@ -264,8 +275,8 @@ export default function LeagueSettingsPage() {
                 ? "Updating League..."
                 : "Saving League..."
               : leagueId
-              ? "Update League Settings"
-              : "Save League Settings"}
+                ? "Update League Settings"
+                : "Save League Settings"}
           </Button>
         </CardContent>
       </Card>
