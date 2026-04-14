@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { Roster } from "@/lib/models/Roster";
 import { League } from "@/lib/models/League";
+import { isEligibleForSlot } from "@/lib/shared/eligibility";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -63,6 +64,13 @@ export async function POST(
     if (!leagueId || !teamName || !position || price === undefined || !playerName || !mlbTeam) {
       return NextResponse.json(
         { error: "leagueId, teamName, position, price, playerName, and mlbTeam are required" },
+        { status: 400 },
+      );
+    }
+
+    if (positions && positions.length > 0 && !isEligibleForSlot(positions, position)) {
+      return NextResponse.json(
+        { error: `Player is not eligible for the ${position} position` },
         { status: 400 },
       );
     }

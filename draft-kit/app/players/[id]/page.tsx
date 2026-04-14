@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { Player, Valuation } from "@/lib/shared/types";
+import { getEligibleSlots } from "@/lib/shared/eligibility";
 import { apiClient } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -358,19 +359,9 @@ export default function PlayerDetailPage({
                   <SelectValue placeholder="Select position" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="C">C</SelectItem>
-                  <SelectItem value="1B">1B</SelectItem>
-                  <SelectItem value="2B">2B</SelectItem>
-                  <SelectItem value="3B">3B</SelectItem>
-                  <SelectItem value="SS">SS</SelectItem>
-                  <SelectItem value="OF">OF</SelectItem>
-                  <SelectItem value="MI">MI</SelectItem>
-                  <SelectItem value="CI">CI</SelectItem>
-                  <SelectItem value="U">U</SelectItem>
-                  <SelectItem value="P">P</SelectItem>
-                  <SelectItem value="SP">SP</SelectItem>
-                  <SelectItem value="RP">RP</SelectItem>
-                  <SelectItem value="BN">BN</SelectItem>
+                  {(player ? getEligibleSlots(player.positions) : ["C","1B","2B","3B","SS","OF","MI","CI","U","P","SP","RP","BN"]).map((slot) => (
+                    <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
