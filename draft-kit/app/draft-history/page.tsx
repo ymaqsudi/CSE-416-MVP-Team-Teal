@@ -15,10 +15,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { apiClient } from "@/lib/api";
 import type { Player } from "@/lib/shared/types";
 import { Loader2, History, Undo2, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+type Team = { id: string; name: string };
 
 type LeagueMeta = {
   _id: string;
@@ -26,12 +35,15 @@ type LeagueMeta = {
   teamCount: number;
   budget: number;
   scoringType: string;
+  teams?: Team[];
+  myTeamId?: string;
 };
 
 type DraftPickRow = {
   _id?: string;
   pickNumber: number;
   round: number;
+  teamId?: string;
   teamName: string;
   playerId: string;
   playerName: string;
@@ -71,7 +83,7 @@ export default function DraftHistoryPage() {
   const [sortKey, setSortKey] = useState<SortKey>("pickNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  const [teamName, setTeamName] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [price, setPrice] = useState("");
   const [playerQuery, setPlayerQuery] = useState("");
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
@@ -179,11 +191,6 @@ export default function DraftHistoryPage() {
     loadPlayers();
   }, [token, leagueId]);
 
-  const teamSuggestions = useMemo(() => {
-    const n = league?.teamCount ?? 12;
-    return Array.from({ length: n }, (_, i) => `Team ${i + 1}`);
-  }, [league?.teamCount]);
-
   const filteredPlayers = useMemo(() => {
     const q = playerQuery.trim().toLowerCase();
     if (!q) return players.slice(0, 12);
@@ -260,9 +267,8 @@ export default function DraftHistoryPage() {
       setFormMessage({ type: "err", text: "Select a player from the list." });
       return;
     }
-    const tn = teamName.trim();
-    if (!tn) {
-      setFormMessage({ type: "err", text: "Enter the fantasy team name." });
+    if (!teamId) {
+      setFormMessage({ type: "err", text: "Select a fantasy team." });
       return;
     }
     const pr = Number(price);
@@ -280,7 +286,7 @@ export default function DraftHistoryPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          teamName: tn,
+          teamId,
           playerId: selectedPlayer.id,
           playerName: selectedPlayer.name,
           mlbTeam: selectedPlayer.mlbTeam ?? "",
@@ -469,18 +475,23 @@ export default function DraftHistoryPage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Fantasy team</label>
-                <Input
-                  list="team-suggestions"
-                  placeholder="e.g. Team 3 or custom name"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  disabled={saving}
-                />
-                <datalist id="team-suggestions">
-                  {teamSuggestions.map((t) => (
-                    <option key={t} value={t} />
-                  ))}
-                </datalist>
+                <Select
+                  value={teamId}
+                  onValueChange={setTeamId}
+                  disabled={saving || (league?.teams ?? []).length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(league?.teams ?? []).map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                        {t.id === league?.myTeamId ? " (my team)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
