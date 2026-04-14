@@ -80,6 +80,8 @@ export async function GET(
           teamCount: league.teamCount,
           budget: league.budget,
           scoringType: league.scoringType,
+          teams: league.teams ?? [],
+          myTeamId: league.myTeamId ?? "",
         },
         picks,
       },
@@ -112,7 +114,7 @@ export async function POST(
 
     const body = await request.json();
     const {
-      teamName,
+      teamId,
       playerId,
       playerName,
       mlbTeam,
@@ -120,9 +122,9 @@ export async function POST(
       price,
     } = body as Record<string, unknown>;
 
-    if (!teamName || !playerId || !playerName || price === undefined || price === null) {
+    if (!teamId || !playerId || !playerName || price === undefined || price === null) {
       return noStoreJson(
-        { error: "teamName, playerId, playerName, and price are required" },
+        { error: "teamId, playerId, playerName, and price are required" },
         400,
       );
     }
@@ -137,6 +139,14 @@ export async function POST(
     const league = await League.findOne({ _id: id, userId: decoded.userId });
     if (!league) {
       return noStoreJson({ error: "League not found" }, 404);
+    }
+
+    const team = (league.teams ?? []).find((t) => t.id === String(teamId));
+    if (!team) {
+      return noStoreJson(
+        { error: "Team does not belong to this league" },
+        400,
+      );
     }
 
     if (!Array.isArray(league.draftPicks)) {
@@ -160,7 +170,8 @@ export async function POST(
     league.draftPicks.push({
       pickNumber: nextPick,
       round,
-      teamName: String(teamName).trim(),
+      teamId: team.id,
+      teamName: team.name,
       playerId: pid,
       playerName: String(playerName).trim(),
       mlbTeam: mlbTeam != null ? String(mlbTeam) : "",

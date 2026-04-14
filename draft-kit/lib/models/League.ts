@@ -3,6 +3,7 @@ import mongoose, { Schema, Model, Document, Types } from "mongoose";
 export interface IDraftPick {
   pickNumber: number;
   round: number;
+  teamId?: string;
   teamName: string;
   playerId: string;
   playerName: string;
@@ -43,6 +44,7 @@ const DraftPickSchema = new Schema<IDraftPick>(
   {
     pickNumber: { type: Number, required: true, min: 1 },
     round: { type: Number, required: true, min: 1 },
+    teamId: { type: String, default: "", trim: true },
     teamName: { type: String, required: true, trim: true },
     playerId: { type: String, required: true, trim: true },
     playerName: { type: String, required: true, trim: true },
