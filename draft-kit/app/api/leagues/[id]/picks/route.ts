@@ -100,13 +100,13 @@ export async function POST(
 
     const { id } = await context.params;
     const body = await request.json();
-    const { playerId, playerName, mlbTeam, positions, teamName, price } = body;
+    const { playerId, playerName, mlbTeam, positions, teamId, price } = body;
 
-    if (!playerId || !playerName || !mlbTeam || !teamName || !price) {
+    if (!playerId || !playerName || !mlbTeam || !teamId || !price) {
       return NextResponse.json(
         {
           error:
-            "playerId, playerName, mlbTeam, teamName, and price are required",
+            "playerId, playerName, mlbTeam, teamId, and price are required",
         },
         { status: 400 },
       );
@@ -127,6 +127,14 @@ export async function POST(
       return NextResponse.json({ error: "League not found" }, { status: 404 });
     }
 
+    const team = (league.teams ?? []).find((t) => t.id === teamId);
+    if (!team) {
+      return NextResponse.json(
+        { error: "Team does not belong to this league" },
+        { status: 400 },
+      );
+    }
+
     // prevent duplicate: same player already drafted in this league
     const existing = await DraftPick.findOne({ leagueId: id, playerId });
     if (existing) {
@@ -145,7 +153,8 @@ export async function POST(
       playerName,
       mlbTeam,
       positions: Array.isArray(positions) ? positions : [],
-      teamName,
+      teamId,
+      teamName: team.name,
       price: Number(price),
       pickNumber: pickCount + 1,
     });

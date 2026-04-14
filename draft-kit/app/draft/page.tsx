@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { mockPlayers, mockValuations, Player } from "@/lib/mock-data";
 
 type DraftPick = {
@@ -15,10 +22,13 @@ type DraftPick = {
   playerName: string;
   mlbTeam: string;
   positions: string[];
+  teamId: string;
   teamName: string;
   price: number;
   pickNumber: number;
 };
+
+type Team = { id: string; name: string };
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -35,13 +45,15 @@ const ROSTER_SIZE = 23;
 export default function DraftPage() {
   const [picks, setPicks] = useState<DraftPick[]>([]);
   const [budget, setBudget] = useState<number | null>(null);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [myTeamId, setMyTeamId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // record pick form state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
-  const [teamName, setTeamName] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [price, setPrice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -84,9 +96,13 @@ export default function DraftPage() {
         if (!res.ok) return;
         const data = await res.json();
         const league = (data.leagues ?? []).find(
-          (l: { _id: string; budget: number }) => l._id === leagueId,
+          (l: { _id: string }) => l._id === leagueId,
         );
-        if (league) setBudget(league.budget);
+        if (league) {
+          setBudget(league.budget);
+          setTeams(league.teams ?? []);
+          setMyTeamId(league.myTeamId ?? "");
+        }
       } catch {
         // ignore — max bid will fall back to null
       }
@@ -104,8 +120,8 @@ export default function DraftPage() {
   });
 
   async function handleRecordPick() {
-    if (!selectedPlayer || !teamName.trim() || !price) {
-      setSubmitError("Please select a player, enter a team name, and a price.");
+    if (!selectedPlayer || !teamId || !price) {
+      setSubmitError("Please select a player, a team, and a price.");
       return;
     }
     const priceNum = Number(price);
@@ -129,7 +145,7 @@ export default function DraftPage() {
           playerName: selectedPlayer.name,
           mlbTeam: selectedPlayer.mlbTeam ?? "",
           positions: selectedPlayer.positions,
-          teamName: teamName.trim(),
+          teamId,
           price: priceNum,
         }),
       });
@@ -142,7 +158,7 @@ export default function DraftPage() {
       // reset form
       setSelectedPlayer(null);
       setSearchQuery("");
-      setTeamName("");
+      setTeamId("");
       setPrice("");
       await fetchPicks();
     } catch (err) {
@@ -177,9 +193,13 @@ export default function DraftPage() {
     .sort((a, b) => b.pickNumber - a.pickNumber)
     .slice(0, 5);
   const totalSpent = picks.reduce((sum, p) => sum + p.price, 0);
-  const remainingSpots = Math.max(ROSTER_SIZE - picks.length, 1);
+  const myPicks = picks.filter((p) => p.teamId === myTeamId);
+  const mySpent = myPicks.reduce((sum, p) => sum + p.price, 0);
+  const myRemainingSpots = Math.max(ROSTER_SIZE - myPicks.length, 1);
   const maxBid =
-    budget === null ? null : Math.max(budget - totalSpent - (remainingSpots - 1), 0);
+    budget === null || !myTeamId
+      ? null
+      : Math.max(budget - mySpent - (myRemainingSpots - 1), 0);
 
   return (
     <div className="space-y-6">
@@ -327,11 +347,19 @@ export default function DraftPage() {
                   <label className="text-sm text-muted-foreground">
                     Winning Team
                   </label>
-                  <Input
-                    placeholder="e.g. Team Rocket"
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                  />
+                  <Select value={teamId} onValueChange={setTeamId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a team" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teams.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name}
+                          {t.id === myTeamId ? " (my team)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm text-muted-foreground">
@@ -354,7 +382,7 @@ export default function DraftPage() {
               <Button
                 className="w-full"
                 onClick={handleRecordPick}
-                disabled={submitting || !selectedPlayer || !teamName || !price}
+                disabled={submitting || !selectedPlayer || !teamId || !price}
               >
                 {submitting ? "Recording..." : "Record Pick"}
               </Button>
@@ -446,7 +474,8 @@ export default function DraftPage() {
                 {maxBid === null ? "—" : `$${maxBid}`}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Budget minus spent, reserving $1 per remaining roster spot
+                Your budget minus your spent, reserving $1 per remaining roster
+                spot
               </p>
             </CardContent>
           </Card>

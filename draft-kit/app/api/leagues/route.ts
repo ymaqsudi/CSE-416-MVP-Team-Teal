@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League } from "@/lib/models/League";
+
+function makeDefaultTeams(count: number): { id: string; name: string }[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: randomUUID(),
+    name: `Team ${i + 1}`,
+  }));
+}
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -64,6 +72,7 @@ export async function POST(request: NextRequest) {
 
     await connectToDatabase();
 
+    const seededTeams = makeDefaultTeams(Number(teamCount));
     const newLeague = await League.create({
       userId: decoded.userId,
       leagueName: String(leagueName).trim(),
@@ -71,6 +80,8 @@ export async function POST(request: NextRequest) {
       budget: Number(budget),
       scoringType: scoringType ? String(scoringType) : "rotisserie",
       categories: Array.isArray(categories) ? categories : [],
+      teams: seededTeams,
+      myTeamId: seededTeams[0]?.id ?? "",
     });
 
     return NextResponse.json(
@@ -115,6 +126,15 @@ export async function GET(request: NextRequest) {
     const leagues = await League.find({ userId: decoded.userId }).sort({
       createdAt: -1,
     });
+
+    // backfill teams/myTeamId for legacy leagues created before team identity existed
+    for (const league of leagues) {
+      if (!league.teams || league.teams.length === 0) {
+        league.teams = makeDefaultTeams(league.teamCount);
+        if (!league.myTeamId) league.myTeamId = league.teams[0].id;
+        await league.save();
+      }
+    }
 
     return NextResponse.json({ leagues }, { status: 200 });
   } catch (error) {
