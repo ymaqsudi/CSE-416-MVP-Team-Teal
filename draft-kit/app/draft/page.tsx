@@ -154,6 +154,7 @@ export default function DraftPage() {
     .sort((a, b) => b.pickNumber - a.pickNumber)
     .slice(0, 5);
   const totalSpent = picks.reduce((sum, p) => sum + p.price, 0);
+  const maxBid = 42;
 
   return (
     <div className="space-y-6">
@@ -408,6 +409,15 @@ export default function DraftPage() {
                   {mockPlayers.length - draftedIds.size}
                 </span>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Max Bid</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-primary">${maxBid}</p>
             </CardContent>
           </Card>
 
