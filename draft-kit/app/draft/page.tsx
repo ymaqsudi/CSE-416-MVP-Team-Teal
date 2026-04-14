@@ -30,8 +30,11 @@ function getLeagueId(): string | null {
   return localStorage.getItem("draftkit_leagueId");
 }
 
+const ROSTER_SIZE = 23;
+
 export default function DraftPage() {
   const [picks, setPicks] = useState<DraftPick[]>([]);
+  const [budget, setBudget] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +73,26 @@ export default function DraftPage() {
   useEffect(() => {
     fetchPicks();
   }, [fetchPicks]);
+
+  useEffect(() => {
+    if (!leagueId || !token) return;
+    async function fetchLeague() {
+      try {
+        const res = await fetch("/api/leagues", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const league = (data.leagues ?? []).find(
+          (l: { _id: string; budget: number }) => l._id === leagueId,
+        );
+        if (league) setBudget(league.budget);
+      } catch {
+        // ignore — max bid will fall back to null
+      }
+    }
+    fetchLeague();
+  }, [leagueId, token]);
 
   // derive drafted player IDs for filtering available players
   const draftedIds = new Set(picks.map((p) => p.playerId));
@@ -154,6 +177,9 @@ export default function DraftPage() {
     .sort((a, b) => b.pickNumber - a.pickNumber)
     .slice(0, 5);
   const totalSpent = picks.reduce((sum, p) => sum + p.price, 0);
+  const remainingSpots = Math.max(ROSTER_SIZE - picks.length, 1);
+  const maxBid =
+    budget === null ? null : Math.max(budget - totalSpent - (remainingSpots - 1), 0);
 
   return (
     <div className="space-y-6">
@@ -408,6 +434,20 @@ export default function DraftPage() {
                   {mockPlayers.length - draftedIds.size}
                 </span>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Max Bid</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-primary">
+                {maxBid === null ? "—" : `$${maxBid}`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Budget minus spent, reserving $1 per remaining roster spot
+              </p>
             </CardContent>
           </Card>
 
