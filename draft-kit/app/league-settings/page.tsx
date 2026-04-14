@@ -11,6 +11,15 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type Team = { id: string; name: string };
 
 type League = {
   _id: string;
@@ -19,6 +28,8 @@ type League = {
   budget: number;
   scoringType: string;
   categories: string[];
+  teams?: Team[];
+  myTeamId?: string;
 };
 
 export default function LeagueSettingsPage() {
@@ -30,6 +41,8 @@ export default function LeagueSettingsPage() {
   const [budget, setBudget] = useState("260");
   const [scoringType, setScoringType] = useState("rotisserie");
   const [categories, setCategories] = useState("HR,RBI,R,SB,AVG");
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [myTeamId, setMyTeamId] = useState<string>("");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -72,6 +85,8 @@ export default function LeagueSettingsPage() {
           setBudget(String(existingLeague.budget));
           setScoringType(existingLeague.scoringType);
           setCategories(existingLeague.categories.join(","));
+          setTeams(existingLeague.teams ?? []);
+          setMyTeamId(existingLeague.myTeamId ?? "");
         }
       } catch (err) {
         console.error("Load league settings error:", err);
@@ -136,6 +151,8 @@ export default function LeagueSettingsPage() {
           budget: parsedBudget,
           scoringType,
           categories: parsedCategories,
+          teams,
+          myTeamId,
         }),
       });
 
@@ -150,6 +167,10 @@ export default function LeagueSettingsPage() {
         setLeagueId(data.league._id);
         localStorage.setItem("draftkit_leagueId", data.league._id);
       }
+
+      if (data.league?.teams) setTeams(data.league.teams);
+      if (typeof data.league?.myTeamId === "string")
+        setMyTeamId(data.league.myTeamId);
 
       if (leagueId) {
         localStorage.setItem("draftkit_leagueId", leagueId);
@@ -249,6 +270,64 @@ export default function LeagueSettingsPage() {
               disabled={isLoading}
             />
           </div>
+
+          {teams.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Team Names
+              </label>
+              <div className="space-y-2">
+                {teams.map((team, idx) => (
+                  <div key={team.id} className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-6 shrink-0 font-mono">
+                      #{idx + 1}
+                    </span>
+                    <Input
+                      value={team.name}
+                      onChange={(e) =>
+                        setTeams((prev) =>
+                          prev.map((t) =>
+                            t.id === team.id
+                              ? { ...t, name: e.target.value }
+                              : t,
+                          ),
+                        )
+                      }
+                      disabled={isLoading}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Changing the team count will add or remove teams from the end of
+                the list.
+              </p>
+            </div>
+          )}
+
+          {teams.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                My Team
+              </label>
+              <Select value={myTeamId} onValueChange={setMyTeamId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Max Bid on the draft page is calculated from this team&apos;s
+                picks.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">

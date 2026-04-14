@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League } from "@/lib/models/League";
@@ -57,7 +58,15 @@ export async function PATCH(
 
     const { id } = await context.params;
     const body = await request.json();
-    const { leagueName, teamCount, budget, scoringType, categories } = body;
+    const {
+      leagueName,
+      teamCount,
+      budget,
+      scoringType,
+      categories,
+      teams: incomingTeams,
+      myTeamId: incomingMyTeamId,
+    } = body;
 
     if (!leagueName || !teamCount || !budget) {
       return NextResponse.json(
@@ -68,21 +77,57 @@ export async function PATCH(
 
     await connectToDatabase();
 
-    const updatedLeague = await League.findOneAndUpdate(
-      { _id: id, userId: decoded.userId },
-      {
-        leagueName: String(leagueName).trim(),
-        teamCount: Number(teamCount),
-        budget: Number(budget),
-        scoringType: scoringType ? String(scoringType) : "rotisserie",
-        categories: Array.isArray(categories) ? categories : [],
-      },
-      { new: true },
-    );
-
-    if (!updatedLeague) {
+    const league = await League.findOne({ _id: id, userId: decoded.userId });
+    if (!league) {
       return NextResponse.json({ error: "League not found" }, { status: 404 });
     }
+
+    const nextTeamCount = Number(teamCount);
+
+    // start from existing teams (preserve stable IDs), apply incoming name edits,
+    // then resize to match teamCount by appending or trimming.
+    const existing = league.teams ?? [];
+    const incomingById = new Map<string, string>();
+    if (Array.isArray(incomingTeams)) {
+      for (const t of incomingTeams) {
+        if (t && typeof t.id === "string" && typeof t.name === "string") {
+          incomingById.set(t.id, t.name.trim() || "Unnamed");
+        }
+      }
+    }
+
+    const merged = existing.map((t, i) => ({
+      id: t.id,
+      name: incomingById.get(t.id) ?? t.name ?? `Team ${i + 1}`,
+    }));
+
+    if (merged.length < nextTeamCount) {
+      for (let i = merged.length; i < nextTeamCount; i++) {
+        merged.push({ id: randomUUID(), name: `Team ${i + 1}` });
+      }
+    } else if (merged.length > nextTeamCount) {
+      merged.length = nextTeamCount;
+    }
+
+    league.leagueName = String(leagueName).trim();
+    league.teamCount = nextTeamCount;
+    league.budget = Number(budget);
+    league.scoringType = scoringType ? String(scoringType) : "rotisserie";
+    league.categories = Array.isArray(categories) ? categories : [];
+    league.teams = merged;
+
+    // keep myTeamId valid; accept incoming if it references a real team, else fall back
+    const validIds = new Set(merged.map((t) => t.id));
+    if (
+      typeof incomingMyTeamId === "string" &&
+      validIds.has(incomingMyTeamId)
+    ) {
+      league.myTeamId = incomingMyTeamId;
+    } else if (!validIds.has(league.myTeamId)) {
+      league.myTeamId = merged[0]?.id ?? "";
+    }
+
+    const updatedLeague = await league.save();
 
     return NextResponse.json(
       {

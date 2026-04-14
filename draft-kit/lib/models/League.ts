@@ -12,6 +12,11 @@ export interface IDraftPick {
   createdAt?: Date;
 }
 
+export interface ITeam {
+  id: string;
+  name: string;
+}
+
 export interface ILeague extends Document {
   userId: Types.ObjectId;
   leagueName: string;
@@ -19,10 +24,20 @@ export interface ILeague extends Document {
   budget: number;
   scoringType: string;
   categories: string[];
+  teams: ITeam[];
+  myTeamId: string;
   draftPicks: IDraftPick[];
   createdAt: Date;
   updatedAt: Date;
 }
+
+const TeamSchema = new Schema<ITeam>(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
 
 const DraftPickSchema = new Schema<IDraftPick>(
   {
@@ -70,6 +85,14 @@ const LeagueSchema = new Schema<ILeague>(
     categories: {
       type: [String],
       default: [],
+    },
+    teams: {
+      type: [TeamSchema],
+      default: [],
+    },
+    myTeamId: {
+      type: String,
+      default: "",
     },
     draftPicks: {
       type: [DraftPickSchema],
