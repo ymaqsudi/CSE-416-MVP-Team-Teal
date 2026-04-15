@@ -144,6 +144,22 @@ export async function POST(
       );
     }
 
+    const mainRosterSlots = Number(league.mainRosterSlots) || 23;
+
+    const teamPickCount = await DraftPick.countDocuments({
+      leagueId: id,
+      teamId,
+    });
+
+    if (teamPickCount >= mainRosterSlots) {
+      return NextResponse.json(
+        {
+          error: `This team already has ${mainRosterSlots} main-roster picks and cannot draft another main-roster player.`,
+        },
+        { status: 400 },
+      );
+    }
+
     // pick number = how many picks have been made so far + 1
     const pickCount = await DraftPick.countDocuments({ leagueId: id });
 

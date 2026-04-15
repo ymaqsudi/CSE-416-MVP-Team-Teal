@@ -26,6 +26,7 @@ type League = {
   leagueName: string;
   teamCount: number;
   budget: number;
+  mainRosterSlots?: number;
   scoringType: string;
   categories: string[];
   teams?: Team[];
@@ -39,6 +40,7 @@ export default function LeagueSettingsPage() {
   const [leagueName, setLeagueName] = useState("");
   const [teamCount, setTeamCount] = useState("12");
   const [budget, setBudget] = useState("260");
+  const [mainRosterSlots, setMainRosterSlots] = useState("23");
   const [scoringType, setScoringType] = useState("rotisserie");
   const [categories, setCategories] = useState("HR,RBI,R,SB,AVG");
   const [teams, setTeams] = useState<Team[]>([]);
@@ -77,12 +79,20 @@ export default function LeagueSettingsPage() {
         }
 
         if (data.leagues && data.leagues.length > 0) {
-          const existingLeague: League = data.leagues[0];
+          const storedLeagueId = localStorage.getItem("draftkit_leagueId");
+          
+          const existingLeague: League =
+            data.leagues.find((league: League) => league._id === storedLeagueId) ??
+            data.leagues[0];
 
           setLeagueId(existingLeague._id);
+          localStorage.setItem("draftkit_leagueId", existingLeague._id);
+
+
           setLeagueName(existingLeague.leagueName);
           setTeamCount(String(existingLeague.teamCount));
           setBudget(String(existingLeague.budget));
+          setMainRosterSlots(String(existingLeague.mainRosterSlots ?? 23));
           setScoringType(existingLeague.scoringType);
           setCategories(existingLeague.categories.join(","));
           setTeams(existingLeague.teams ?? []);
@@ -99,6 +109,24 @@ export default function LeagueSettingsPage() {
     loadExistingLeague();
   }, []);
 
+
+  function handleCreateNewLeague() {
+    setLeagueId(null);
+    setLeagueName("");
+    setTeamCount("12");
+    setBudget("260");
+    setMainRosterSlots("23");
+    setScoringType("rotisserie");
+    setCategories("HR,RBI,R,SB,AVG");
+    setTeams([]);
+    setMyTeamId("");
+    setError("");
+    setSuccess("");
+    localStorage.removeItem("draftkit_leagueId");
+  }
+
+  
+  
   async function handleSaveLeague() {
     setError("");
     setSuccess("");
@@ -113,6 +141,7 @@ export default function LeagueSettingsPage() {
     const trimmedLeagueName = leagueName.trim();
     const parsedTeamCount = Number(teamCount);
     const parsedBudget = Number(budget);
+    const parsedMainRosterSlots = Number(mainRosterSlots);
     const parsedCategories = categories
       .split(",")
       .map((category) => category.trim())
@@ -132,6 +161,11 @@ export default function LeagueSettingsPage() {
       setError("Budget must be at least 1.");
       return;
     }
+    
+    if (!parsedMainRosterSlots || parsedMainRosterSlots < 1) {
+      setError("Main roster slots must be at least 1.");
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -149,6 +183,7 @@ export default function LeagueSettingsPage() {
           leagueName: trimmedLeagueName,
           teamCount: parsedTeamCount,
           budget: parsedBudget,
+          mainRosterSlots: parsedMainRosterSlots,
           scoringType,
           categories: parsedCategories,
           teams,
@@ -183,7 +218,7 @@ export default function LeagueSettingsPage() {
       );
 
       setTimeout(() => {
-        router.push("/");
+        window.location.href = "/";
       }, 1000);
     } catch (err) {
       console.error("League settings error:", err);
@@ -204,15 +239,28 @@ export default function LeagueSettingsPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-lg">
-        <CardHeader className="space-y-1">
+        <CardHeader className="space-y-3">
           <CardTitle className="text-2xl text-center">
             League Settings
           </CardTitle>
+
           <CardDescription className="text-center">
             {leagueId
               ? "Update your current league settings"
               : "Set up your league before draft day"}
           </CardDescription>
+
+          {leagueId ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCreateNewLeague}
+              disabled={isLoading}
+              className="w-full"
+            >
+              Create New League
+            </Button>
+          ) : null}
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -259,6 +307,23 @@ export default function LeagueSettingsPage() {
               disabled={isLoading}
             />
           </div>
+          
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Main Roster Slots
+            </label>
+            <Input
+              type="number"
+              value={mainRosterSlots}
+              onChange={(e) => setMainRosterSlots(e.target.value)}
+              disabled={isLoading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Default is 23. This controls when a team is considered full for
+              the main roster.
+            </p>
+          </div>
+
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">

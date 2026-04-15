@@ -45,6 +45,7 @@ const ROSTER_SIZE = 23;
 export default function DraftPage() {
   const [picks, setPicks] = useState<DraftPick[]>([]);
   const [budget, setBudget] = useState<number | null>(null);
+  const [mainRosterSlots, setMainRosterSlots] = useState<number>(23);
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeamId, setMyTeamId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -96,10 +97,17 @@ export default function DraftPage() {
         if (!res.ok) return;
         const data = await res.json();
         const league = (data.leagues ?? []).find(
-          (l: { _id: string }) => l._id === leagueId,
+          (l: {
+            _id: string;
+            budget: number;
+            mainRosterSlots?: number;
+            teams?: Team[];
+            myTeamId?: string;
+          }) => l._id === leagueId,
         );
         if (league) {
           setBudget(league.budget);
+          setMainRosterSlots(Number(league.mainRosterSlots) || 23);
           setTeams(league.teams ?? []);
           setMyTeamId(league.myTeamId ?? "");
         }
@@ -112,6 +120,16 @@ export default function DraftPage() {
 
   // derive drafted player IDs for filtering available players
   const draftedIds = new Set(picks.map((p) => p.playerId));
+  const selectedTeamPickCount = teamId
+    ? picks.filter((p) => p.teamId === teamId).length
+    : 0;
+
+  const selectedTeamRemainingSpots = teamId
+    ? Math.max(mainRosterSlots - selectedTeamPickCount, 0)
+    : null;
+
+  const isSelectedTeamFull =
+    teamId !== "" && selectedTeamPickCount >= mainRosterSlots;
 
   const filteredPlayers = mockPlayers.filter((p) => {
     if (draftedIds.has(p.id)) return false;
@@ -375,6 +393,22 @@ export default function DraftPage() {
                 </div>
               </div>
 
+              {teamId && selectedTeamRemainingSpots !== null ? (
+                <p
+                  className={`text-xs ${
+                    isSelectedTeamFull
+                      ? "text-destructive"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {isSelectedTeamFull
+                    ? "This team has already filled all main roster slots."
+                    : `${selectedTeamRemainingSpots} main roster spot${
+                        selectedTeamRemainingSpots === 1 ? "" : "s"
+                      } remaining for this team.`}
+                </p>
+              ) : null}
+
               {submitError && (
                 <p className="text-xs text-destructive">{submitError}</p>
               )}
@@ -382,7 +416,13 @@ export default function DraftPage() {
               <Button
                 className="w-full"
                 onClick={handleRecordPick}
-                disabled={submitting || !selectedPlayer || !teamId || !price}
+                disabled={
+                  submitting ||
+                  !selectedPlayer ||
+                  !teamId ||
+                  !price ||
+                  isSelectedTeamFull
+                }
               >
                 {submitting ? "Recording..." : "Record Pick"}
               </Button>

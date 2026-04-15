@@ -23,6 +23,7 @@ export interface ILeague extends Document {
   leagueName: string;
   teamCount: number;
   budget: number;
+  mainRosterSlots: number;
   scoringType: string;
   categories: string[];
   teams: ITeam[];
@@ -78,6 +79,12 @@ const LeagueSchema = new Schema<ILeague>(
       type: Number,
       required: true,
       min: 1,
+    },
+    mainRosterSlots: {
+      type: Number,
+      required: true,
+      min: 1,
+      default: 23,
     },
     scoringType: {
       type: String,

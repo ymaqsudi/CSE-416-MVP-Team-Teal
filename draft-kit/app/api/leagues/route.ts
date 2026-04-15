@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { leagueName, teamCount, budget, scoringType, categories } = body;
+    const { leagueName, teamCount, budget, mainRosterSlots, scoringType, categories } = body;
 
     if (!leagueName || !teamCount || !budget) {
       return NextResponse.json(
@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
       leagueName: String(leagueName).trim(),
       teamCount: Number(teamCount),
       budget: Number(budget),
+      mainRosterSlots: Number(mainRosterSlots) || 23,
       scoringType: scoringType ? String(scoringType) : "rotisserie",
       categories: Array.isArray(categories) ? categories : [],
       teams: seededTeams,
@@ -126,6 +127,15 @@ export async function GET(request: NextRequest) {
     const leagues = await League.find({ userId: decoded.userId }).sort({
       createdAt: -1,
     });
+
+    console.log(
+      "GET leagues mainRosterSlots:",
+      leagues.map((league) => ({
+        id: league._id.toString(),
+        name: league.leagueName,
+        mainRosterSlots: league.mainRosterSlots,
+      })),
+    );
 
     // backfill teams/myTeamId for legacy leagues created before team identity existed
     for (const league of leagues) {

@@ -58,10 +58,12 @@ export async function PATCH(
 
     const { id } = await context.params;
     const body = await request.json();
+    console.log("PATCH league body:", body);
     const {
       leagueName,
       teamCount,
       budget,
+      mainRosterSlots,
       scoringType,
       categories,
       teams: incomingTeams,
@@ -112,9 +114,12 @@ export async function PATCH(
     league.leagueName = String(leagueName).trim();
     league.teamCount = nextTeamCount;
     league.budget = Number(budget);
+    league.mainRosterSlots = Number(mainRosterSlots) || 23;
     league.scoringType = scoringType ? String(scoringType) : "rotisserie";
     league.categories = Array.isArray(categories) ? categories : [];
     league.teams = merged;
+
+    console.log("Before save mainRosterSlots:", league.mainRosterSlots);
 
     // keep myTeamId valid; accept incoming if it references a real team, else fall back
     const validIds = new Set(merged.map((t) => t.id));
@@ -128,6 +133,7 @@ export async function PATCH(
     }
 
     const updatedLeague = await league.save();
+    console.log("After save mainRosterSlots:", updatedLeague.mainRosterSlots);
 
     return NextResponse.json(
       {

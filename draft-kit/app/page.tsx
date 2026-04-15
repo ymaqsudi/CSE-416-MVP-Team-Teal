@@ -86,9 +86,17 @@ export default function HomePage() {
         }
 
         if (data.leagues && data.leagues.length > 0) {
-          setLeague(data.leagues[0]);
+          const storedLeagueId = localStorage.getItem("draftkit_leagueId");
+
+          const selectedLeague =
+            data.leagues.find((league: League) => league._id === storedLeagueId) ??
+            data.leagues[0];
+
+          setLeague(selectedLeague);
+          localStorage.setItem("draftkit_leagueId", selectedLeague._id);
         } else {
           setLeague(null);
+          localStorage.removeItem("draftkit_leagueId");
         }
       } catch (err) {
         console.error("Home page load error:", err);
