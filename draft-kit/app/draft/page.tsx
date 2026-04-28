@@ -40,7 +40,6 @@ function getLeagueId(): string | null {
   return localStorage.getItem("draftkit_leagueId");
 }
 
-const ROSTER_SIZE = 23;
 
 export default function DraftPage() {
   const [picks, setPicks] = useState<DraftPick[]>([]);
@@ -120,13 +119,30 @@ export default function DraftPage() {
 
   // derive drafted player IDs for filtering available players
   const draftedIds = new Set(picks.map((p) => p.playerId));
-  const selectedTeamPickCount = teamId
-    ? picks.filter((p) => p.teamId === teamId).length
-    : 0;
+  const selectedTeamPicks = teamId
+    ? picks.filter((p) => p.teamId === teamId)
+    : [];
 
-  const selectedTeamRemainingSpots = teamId
-    ? Math.max(mainRosterSlots - selectedTeamPickCount, 0)
-    : null;
+  const selectedTeamPickCount = selectedTeamPicks.length;
+
+  const selectedTeamSpent = selectedTeamPicks.reduce(
+    (sum, p) => sum + p.price,
+    0,
+  );
+
+  const selectedTeamRemainingSpots =
+    teamId !== "" ? Math.max(mainRosterSlots - selectedTeamPickCount, 0) : null;
+
+  const selectedTeamRemainingSlotsForMaxBid =
+    teamId !== "" ? Math.max(mainRosterSlots - selectedTeamPickCount, 1) : null;
+
+  const selectedTeamMaxBid =
+    teamId !== "" && budget !== null && selectedTeamRemainingSlotsForMaxBid !== null
+      ? Math.max(
+          budget - selectedTeamSpent - (selectedTeamRemainingSlotsForMaxBid - 1),
+          0,
+        )
+      : null;
 
   const isSelectedTeamFull =
     teamId !== "" && selectedTeamPickCount >= mainRosterSlots;
@@ -145,6 +161,12 @@ export default function DraftPage() {
     const priceNum = Number(price);
     if (isNaN(priceNum) || priceNum < 1) {
       setSubmitError("Price must be at least $1.");
+      return;
+    }
+    if (selectedTeamMaxBid !== null && priceNum > selectedTeamMaxBid) {
+      setSubmitError(
+        `This bid is too high for the selected team. Max allowed bid is $${selectedTeamMaxBid}.`,
+      );
       return;
     }
 
@@ -213,7 +235,7 @@ export default function DraftPage() {
   const totalSpent = picks.reduce((sum, p) => sum + p.price, 0);
   const myPicks = picks.filter((p) => p.teamId === myTeamId);
   const mySpent = myPicks.reduce((sum, p) => sum + p.price, 0);
-  const myRemainingSpots = Math.max(ROSTER_SIZE - myPicks.length, 1);
+  const myRemainingSpots = Math.max(mainRosterSlots - myPicks.length, 1);
   const maxBid =
     budget === null || !myTeamId
       ? null
@@ -394,19 +416,30 @@ export default function DraftPage() {
               </div>
 
               {teamId && selectedTeamRemainingSpots !== null ? (
-                <p
-                  className={`text-xs ${
-                    isSelectedTeamFull
-                      ? "text-destructive"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {isSelectedTeamFull
-                    ? "This team has already filled all main roster slots."
-                    : `${selectedTeamRemainingSpots} main roster spot${
-                        selectedTeamRemainingSpots === 1 ? "" : "s"
-                      } remaining for this team.`}
-                </p>
+                <div className="space-y-1">
+                  <p
+                    className={`text-xs ${
+                      isSelectedTeamFull
+                        ? "text-destructive"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {isSelectedTeamFull
+                      ? "This team has already filled all main roster slots."
+                      : `${selectedTeamRemainingSpots} main roster spot${
+                          selectedTeamRemainingSpots === 1 ? "" : "s"
+                        } remaining for this team.`}
+                  </p>
+
+                  {selectedTeamMaxBid !== null ? (
+                    <p className="text-xs text-muted-foreground">
+                      Max allowed bid for this team right now:{" "}
+                      <span className="font-semibold text-foreground">
+                        ${selectedTeamMaxBid}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
 
               {submitError && (
@@ -421,7 +454,9 @@ export default function DraftPage() {
                   !selectedPlayer ||
                   !teamId ||
                   !price ||
-                  isSelectedTeamFull
+                  isSelectedTeamFull ||
+                  (selectedTeamMaxBid !== null &&
+                    Number(price) > selectedTeamMaxBid)
                 }
               >
                 {submitting ? "Recording..." : "Record Pick"}

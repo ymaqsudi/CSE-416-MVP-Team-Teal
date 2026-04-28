@@ -55,7 +55,7 @@ type DraftPickRow = {
 
 type SortKey = "pickNumber" | "round" | "price" | "teamName" | "playerName" | "createdAt";
 
-const LEAGUE_STORAGE_KEY = "draftkit_draft_history_league_id";
+const LEAGUE_STORAGE_KEY = "draftkit_leagueId";
 
 function formatWhen(iso?: string) {
   if (!iso) return "—";
@@ -414,6 +414,11 @@ export default function DraftHistoryPage() {
                   setLeagueId(next);
                   try {
                     sessionStorage.setItem(LEAGUE_STORAGE_KEY, next);
+                  } catch {
+                    /* ignore */
+                  }
+                  try {
+                    localStorage.setItem("draftkit_leagueId", next);
                   } catch {
                     /* ignore */
                   }

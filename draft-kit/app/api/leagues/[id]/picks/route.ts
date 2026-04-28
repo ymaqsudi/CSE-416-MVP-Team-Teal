@@ -146,15 +146,30 @@ export async function POST(
 
     const mainRosterSlots = Number(league.mainRosterSlots) || 23;
 
-    const teamPickCount = await DraftPick.countDocuments({
+    const teamPicks = await DraftPick.find({
       leagueId: id,
       teamId,
-    });
+    }).select("price");
+
+    const teamPickCount = teamPicks.length;
 
     if (teamPickCount >= mainRosterSlots) {
       return NextResponse.json(
         {
           error: `This team already has ${mainRosterSlots} main-roster picks and cannot draft another main-roster player.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const teamSpent = teamPicks.reduce((sum, pick) => sum + Number(pick.price || 0), 0);
+    const remainingSpots = Math.max(mainRosterSlots - teamPickCount, 1);
+    const maxAllowedBid = Math.max(Number(league.budget) - teamSpent - (remainingSpots - 1), 0);
+
+    if (Number(price) > maxAllowedBid) {
+      return NextResponse.json(
+        {
+          error: `This bid is too high for the selected team. Max allowed bid is $${maxAllowedBid}.`,
         },
         { status: 400 },
       );

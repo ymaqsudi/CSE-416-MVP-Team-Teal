@@ -62,10 +62,19 @@ export default function RosterPage() {
         });
         const data = await res.json();
         if (res.ok) {
-          setLeagues(data.leagues ?? []);
-          if (data.leagues?.length > 0) {
-            setSelectedLeagueId(data.leagues[0]._id);
-            setBudget(data.leagues[0].budget);
+          const fetchedLeagues = data.leagues ?? [];
+          setLeagues(fetchedLeagues);
+        
+          if (fetchedLeagues.length > 0) {
+            const storedLeagueId = localStorage.getItem("draftkit_leagueId");
+        
+            const selectedLeague =
+              fetchedLeagues.find((league: League) => league._id === storedLeagueId) ??
+              fetchedLeagues[0];
+        
+            setSelectedLeagueId(selectedLeague._id);
+            setBudget(selectedLeague.budget);
+            localStorage.setItem("draftkit_leagueId", selectedLeague._id);
           }
         }
       } catch (e) {
