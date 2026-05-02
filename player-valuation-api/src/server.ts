@@ -1,12 +1,15 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
 import { apiKeyMiddleware } from "./middleware/apiKey.js";
 import playersRouter from "./routes/players.js";
 import transactionsRouter from "./routes/transactions.js";
 import sessionsRouter from "./routes/sessions.js";
 import valuationsRouter from "./routes/valuations.js";
+import devAuthRouter from "./routes/devAuth.js";
+import devKeysRouter from "./routes/devKeys.js";
 
 const PORT = process.env.PORT ?? 4000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -26,12 +29,18 @@ async function start() {
   }
 
   const app = express();
-  app.use(cors({ origin: true }));
+  app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
+  app.use(cookieParser());
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", service: "player-valuation-api" });
   });
+
+  // Developer portal endpoints (own JWT auth via cookie); mounted BEFORE the
+  // license-key middleware so developers can register/log in without a key.
+  app.use("/dev/auth", devAuthRouter);
+  app.use("/dev/keys", devKeysRouter);
 
   app.use(apiKeyMiddleware);
 
