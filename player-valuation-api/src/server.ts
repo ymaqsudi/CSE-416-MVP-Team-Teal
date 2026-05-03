@@ -19,6 +19,10 @@ async function start() {
     console.error("Missing MONGODB_URI in environment.");
     process.exit(1);
   }
+  if (!process.env.JWT_SECRET) {
+    console.error("Missing JWT_SECRET in environment.");
+    process.exit(1);
+  }
 
   try {
     await mongoose.connect(MONGODB_URI);
@@ -29,6 +33,9 @@ async function start() {
   }
 
   const app = express();
+  // Required for accurate req.ip when running behind a proxy/load balancer
+  // (Render, Vercel, nginx, etc.). Without this, req.ip is the proxy's IP.
+  app.set("trust proxy", 1);
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());

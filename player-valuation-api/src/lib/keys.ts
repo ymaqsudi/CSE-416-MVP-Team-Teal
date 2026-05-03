@@ -1,7 +1,8 @@
 import { randomBytes, createHash, timingSafeEqual } from "crypto";
 
 const KEY_PREFIX = "pvk";
-const PREFIX_LEN = 8;
+const PREFIX_BYTES = 4;
+const PREFIX_LEN = PREFIX_BYTES * 2;
 const SECRET_BYTES = 24;
 
 export interface GeneratedKey {
@@ -10,9 +11,11 @@ export interface GeneratedKey {
   keyHash: string;
 }
 
+// Hex encoding (0-9, a-f) — never collides with the `_` separator, unlike
+// base64url which can emit `_` and break parseKey().
 export function generateApiKey(): GeneratedKey {
-  const prefix = randomBytes(6).toString("base64url").slice(0, PREFIX_LEN);
-  const secret = randomBytes(SECRET_BYTES).toString("base64url");
+  const prefix = randomBytes(PREFIX_BYTES).toString("hex");
+  const secret = randomBytes(SECRET_BYTES).toString("hex");
   const plaintext = `${KEY_PREFIX}_${prefix}_${secret}`;
   const keyHash = sha256Hex(plaintext);
   return { plaintext, prefix, keyHash };

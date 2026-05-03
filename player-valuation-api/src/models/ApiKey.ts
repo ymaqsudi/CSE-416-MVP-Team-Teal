@@ -5,7 +5,6 @@ export interface IApiKey extends Document {
   prefix: string;
   keyHash: string;
   label: string;
-  allowedIps: string[];
   rateLimit: {
     windowSec: number;
     max: number;
@@ -38,10 +37,6 @@ const ApiKeySchema = new Schema<IApiKey>(
       required: true,
       trim: true,
       maxlength: 100,
-    },
-    allowedIps: {
-      type: [String],
-      default: [],
     },
     rateLimit: {
       windowSec: { type: Number, required: true, default: 60 },
