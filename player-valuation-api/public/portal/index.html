@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Player Valuation API — Developer Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-3xl mx-auto p-6">
+    <header class="flex items-center justify-between mb-8">
+      <h1 class="text-2xl font-semibold">Player Valuation API</h1>
+      <nav id="nav" class="flex items-center gap-4 text-sm"></nav>
+    </header>
+
+    <main class="bg-white rounded-lg shadow p-8">
+      <h2 class="text-xl font-semibold mb-2">Developer Portal</h2>
+      <p class="text-gray-600 mb-6">
+        Register a developer account, generate API keys with IP allowlists and
+        rate limits, and review usage for each key. Keys are required to call
+        any non-public endpoint of the Player Valuation API.
+      </p>
+      <div class="flex gap-3">
+        <a href="/portal/register.html"
+           class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Register</a>
+        <a href="/portal/login.html"
+           class="px-4 py-2 border border-gray-300 rounded hover:bg-gray-100">Log in</a>
+      </div>
+    </main>
+  </div>
+
+  <script src="/portal/app.js"></script>
+  <script>
+    (async () => {
+      try {
+        const me = await window.portal.apiFetch("/dev/auth/me");
+        window.portal.renderNav(me.email);
+      } catch {
+        window.portal.renderNav(null);
+      }
+    })();
+  </script>
+</body>
+</html>

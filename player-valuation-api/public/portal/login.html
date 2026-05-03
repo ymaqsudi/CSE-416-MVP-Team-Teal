@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Log in — Developer Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-md mx-auto p-6">
+    <header class="flex items-center justify-between mb-8">
+      <a href="/portal/" class="text-lg font-semibold">Player Valuation API</a>
+      <nav id="nav" class="flex items-center gap-4 text-sm"></nav>
+    </header>
+
+    <main class="bg-white rounded-lg shadow p-8">
+      <h2 class="text-xl font-semibold mb-4">Log in</h2>
+      <form id="form" class="space-y-4">
+        <label class="block">
+          <span class="text-sm font-medium text-gray-700">Email</span>
+          <input id="email" name="email" type="email" required
+                 class="mt-1 block w-full rounded border-gray-300 shadow-sm focus:ring focus:ring-blue-200" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium text-gray-700">Password</span>
+          <input id="password" name="password" type="password" required
+                 class="mt-1 block w-full rounded border-gray-300 shadow-sm focus:ring focus:ring-blue-200" />
+        </label>
+        <p id="err" class="hidden text-sm text-red-600"></p>
+        <button type="submit"
+                class="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+          Log in
+        </button>
+      </form>
+      <p class="mt-4 text-sm text-gray-600">
+        New here?
+        <a href="/portal/register.html" class="text-blue-600 hover:underline">Create an account</a>
+      </p>
+    </main>
+  </div>
+
+  <script src="/portal/app.js"></script>
+  <script>
+    window.portal.renderNav(null);
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      window.portal.hideError("err");
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      try {
+        await window.portal.apiFetch("/dev/auth/login", {
+          method: "POST",
+          body: { email, password },
+        });
+        window.location.href = "/portal/keys.html";
+      } catch (err) {
+        window.portal.showError("err", err.message || "Login failed");
+      }
+    });
+  </script>
+</body>
+</html>

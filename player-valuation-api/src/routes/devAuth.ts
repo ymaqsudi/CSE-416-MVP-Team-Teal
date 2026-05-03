@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { DeveloperAccount } from "../models/DeveloperAccount.js";
+import { ApiKey } from "../models/ApiKey.js";
 import {
   jwtAuthMiddleware,
   signDevToken,
@@ -73,7 +74,7 @@ router.post("/login", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-router.post("/logout", (req: Request, res: Response): void => {
+router.post("/logout", (_req: Request, res: Response): void => {
   res.clearCookie(DEV_COOKIE_NAME, devCookieOptions());
   res.json({ ok: true });
 });
@@ -131,6 +132,39 @@ router.post(
       res.json({ ok: true });
     } catch (err) {
       console.error("change-password error", err);
+      res.status(500).json({ message: "Internal error" });
+    }
+  }
+);
+
+router.post(
+  "/delete-account",
+  jwtAuthMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { password } = req.body ?? {};
+      if (typeof password !== "string") {
+        res.status(400).json({ message: "password required to confirm deletion" });
+        return;
+      }
+      const account = await DeveloperAccount.findById(req.developerId);
+      if (!account) {
+        res.status(404).json({ message: "Account not found" });
+        return;
+      }
+      const ok = await bcrypt.compare(password, account.passwordHash);
+      if (!ok) {
+        res.status(401).json({ message: "Password incorrect" });
+        return;
+      }
+      // Cascade: delete owned keys so they cannot be used post-deletion.
+      // UsageLogs naturally rotate out of the capped collection.
+      await ApiKey.deleteMany({ developerId: account._id });
+      await account.deleteOne();
+      res.clearCookie(DEV_COOKIE_NAME, devCookieOptions());
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("delete-account error", err);
       res.status(500).json({ message: "Internal error" });
     }
   }

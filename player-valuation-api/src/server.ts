@@ -1,4 +1,5 @@
 import "dotenv/config";
+import path from "path";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -10,6 +11,11 @@ import sessionsRouter from "./routes/sessions.js";
 import valuationsRouter from "./routes/valuations.js";
 import devAuthRouter from "./routes/devAuth.js";
 import devKeysRouter from "./routes/devKeys.js";
+import devUsageRouter from "./routes/devUsage.js";
+
+// `__dirname` is the directory of this compiled file (src/ in dev, dist/ in prod);
+// the portal lives at <project-root>/public/portal in both cases.
+const PORTAL_DIR = path.resolve(__dirname, "../public/portal");
 
 const PORT = process.env.PORT ?? 4000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -44,10 +50,13 @@ async function start() {
     res.json({ status: "ok", service: "player-valuation-api" });
   });
 
-  // Developer portal endpoints (own JWT auth via cookie); mounted BEFORE the
-  // license-key middleware so developers can register/log in without a key.
+  // Developer portal: static UI + JWT-cookie-protected /dev/* APIs. Mounted
+  // BEFORE the license-key middleware so developers can register / log in /
+  // manage keys without holding a license key.
+  app.use("/portal", express.static(PORTAL_DIR));
   app.use("/dev/auth", devAuthRouter);
   app.use("/dev/keys", devKeysRouter);
+  app.use("/dev/usage", devUsageRouter);
 
   app.use(apiKeyMiddleware);
 

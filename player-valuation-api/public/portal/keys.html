@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Keys — Developer Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-4xl mx-auto p-6">
+    <header class="flex items-center justify-between mb-8">
+      <a href="/portal/" class="text-lg font-semibold">Player Valuation API</a>
+      <nav id="nav" class="flex items-center gap-4 text-sm"></nav>
+    </header>
+
+    <main class="space-y-6">
+      <section class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold mb-3">Create a key</h2>
+        <form id="createForm" class="space-y-3">
+          <label class="block">
+            <span class="text-sm font-medium text-gray-700">Label</span>
+            <input id="label" type="text" required maxlength="100" placeholder="e.g. local-dev"
+                   class="mt-1 block w-full rounded border-gray-300 shadow-sm" />
+          </label>
+          <div class="flex gap-3">
+            <label class="block flex-1">
+              <span class="text-sm font-medium text-gray-700">Window (seconds)</span>
+              <input id="windowSec" type="number" min="1" max="86400" value="60" required
+                     class="mt-1 block w-full rounded border-gray-300 shadow-sm" />
+            </label>
+            <label class="block flex-1">
+              <span class="text-sm font-medium text-gray-700">Max requests / window</span>
+              <input id="maxReq" type="number" min="1" max="100000" value="60" required
+                     class="mt-1 block w-full rounded border-gray-300 shadow-sm" />
+            </label>
+          </div>
+          <p id="createErr" class="hidden text-sm text-red-600"></p>
+          <button type="submit"
+                  class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+            Generate key
+          </button>
+        </form>
+
+        <div id="newKey" class="hidden mt-4 p-4 border border-yellow-300 bg-yellow-50 rounded">
+          <p class="font-semibold text-yellow-800">
+            Copy this key now — it is shown only once and cannot be retrieved later.
+          </p>
+          <div class="mt-2 flex items-center gap-2">
+            <code id="newKeyValue" class="flex-1 font-mono text-sm bg-white p-2 rounded border break-all"></code>
+            <button id="copyBtn" type="button"
+                    class="px-3 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900">Copy</button>
+          </div>
+          <button id="ackBtn" type="button"
+                  class="mt-3 text-sm text-blue-600 hover:underline">
+            I've copied it — dismiss
+          </button>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold mb-3">Your keys</h2>
+        <div id="keys" class="space-y-3"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/portal/app.js"></script>
+  <script>
+    let cachedKeys = [];
+
+    async function loadKeys() {
+      const data = await window.portal.apiFetch("/dev/keys");
+      cachedKeys = data.keys;
+      renderKeys();
+    }
+
+    function renderKeys() {
+      const container = document.getElementById("keys");
+      if (cachedKeys.length === 0) {
+        container.innerHTML = `<p class="text-sm text-gray-500">No keys yet.</p>`;
+        return;
+      }
+      container.innerHTML = cachedKeys
+        .map((k) => keyCardHtml(k))
+        .join("");
+
+      cachedKeys.forEach((k) => {
+        const revBtn = document.getElementById(`revoke-${k.id}`);
+        if (revBtn) {
+          revBtn.addEventListener("click", () => revokeKey(k.id));
+        }
+        const usageBtn = document.getElementById(`usage-${k.id}`);
+        if (usageBtn) {
+          usageBtn.addEventListener("click", () => toggleUsage(k.id));
+        }
+      });
+    }
+
+    function keyCardHtml(k) {
+      const revoked = k.revokedAt
+        ? `<span class="text-red-600 font-medium">revoked ${window.portal.fmtDate(k.revokedAt)}</span>`
+        : `<button id="revoke-${k.id}" class="text-red-600 hover:underline text-sm">Revoke</button>`;
+      return `
+        <div class="border rounded p-4">
+          <div class="flex justify-between items-start gap-3">
+            <div class="flex-1">
+              <p class="font-mono text-sm">${window.portal.escapeHtml(k.prefix)}…</p>
+              <p class="font-medium">${window.portal.escapeHtml(k.label)}</p>
+              <p class="text-xs text-gray-500">
+                Created ${window.portal.fmtDate(k.createdAt)}
+                · Rate limit ${k.rateLimit.max}/${k.rateLimit.windowSec}s
+              </p>
+            </div>
+            <div class="text-right text-sm flex flex-col gap-1">
+              ${revoked}
+              <button id="usage-${k.id}" class="text-blue-600 hover:underline text-sm">Show usage</button>
+            </div>
+          </div>
+          <div id="usage-list-${k.id}" class="hidden mt-3 border-t pt-3"></div>
+        </div>
+      `;
+    }
+
+    async function revokeKey(id) {
+      if (!confirm("Revoke this key? Calls using it will fail immediately.")) return;
+      try {
+        await window.portal.apiFetch(`/dev/keys/${id}/revoke`, { method: "POST" });
+        await loadKeys();
+      } catch (err) {
+        alert(err.message || "Revoke failed");
+      }
+    }
+
+    async function toggleUsage(id) {
+      const el = document.getElementById(`usage-list-${id}`);
+      if (!el.classList.contains("hidden")) {
+        el.classList.add("hidden");
+        return;
+      }
+      el.classList.remove("hidden");
+      el.innerHTML = `<p class="text-sm text-gray-500">Loading…</p>`;
+      try {
+        const data = await window.portal.apiFetch(`/dev/usage?keyId=${encodeURIComponent(id)}&limit=20`);
+        if (data.entries.length === 0) {
+          el.innerHTML = `<p class="text-sm text-gray-500">No usage recorded for this key.</p>`;
+          return;
+        }
+        el.innerHTML = `
+          <table class="w-full text-xs">
+            <thead class="text-left text-gray-500">
+              <tr><th class="py-1">When</th><th>Status</th><th>IP</th><th>Path</th></tr>
+            </thead>
+            <tbody>
+              ${data.entries.map((e) => `
+                <tr class="border-t">
+                  <td class="py-1">${window.portal.fmtDate(e.ts)}</td>
+                  <td class="py-1 ${e.status >= 400 ? "text-red-600" : "text-green-700"}">${e.status}</td>
+                  <td class="py-1 font-mono">${window.portal.escapeHtml(e.ip)}</td>
+                  <td class="py-1 font-mono break-all">${window.portal.escapeHtml(e.path)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+      } catch (err) {
+        el.innerHTML = `<p class="text-sm text-red-600">${window.portal.escapeHtml(err.message || "Failed to load usage")}</p>`;
+      }
+    }
+
+    document.getElementById("createForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      window.portal.hideError("createErr");
+      const label = document.getElementById("label").value.trim();
+      const windowSec = parseInt(document.getElementById("windowSec").value, 10);
+      const maxReq = parseInt(document.getElementById("maxReq").value, 10);
+      try {
+        const created = await window.portal.apiFetch("/dev/keys", {
+          method: "POST",
+          body: { label, rateLimit: { windowSec, max: maxReq } },
+        });
+        const box = document.getElementById("newKey");
+        document.getElementById("newKeyValue").textContent = created.plaintext;
+        box.classList.remove("hidden");
+        document.getElementById("createForm").reset();
+        document.getElementById("windowSec").value = 60;
+        document.getElementById("maxReq").value = 60;
+        await loadKeys();
+      } catch (err) {
+        window.portal.showError("createErr", err.message || "Create failed");
+      }
+    });
+
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      const value = document.getElementById("newKeyValue").textContent;
+      try {
+        await navigator.clipboard.writeText(value);
+        document.getElementById("copyBtn").textContent = "Copied";
+      } catch {
+        // Older browsers / non-HTTPS — fall back to selecting the text.
+        const range = document.createRange();
+        range.selectNode(document.getElementById("newKeyValue"));
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+      }
+    });
+
+    document.getElementById("ackBtn").addEventListener("click", () => {
+      document.getElementById("newKey").classList.add("hidden");
+      document.getElementById("newKeyValue").textContent = "";
+      document.getElementById("copyBtn").textContent = "Copy";
+    });
+
+    (async () => {
+      const me = await window.portal.requireAuth();
+      if (!me) return;
+      window.portal.renderNav(me.email);
+      await loadKeys();
+    })();
+  </script>
+</body>
+</html>
