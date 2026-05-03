@@ -72,12 +72,16 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Environment Variables
 
-Create a `.env.local` file inside `draft-kit/`:
+Create a `.env.local` file inside `draft-kit/` (see `.env.example`):
 
 ```
-NEXT_PUBLIC_API_BASE_URL=https://cse-416-mvp-team-teal.onrender.com
-NEXT_PUBLIC_API_KEY=mvp-teal-secret-key
+VALUATION_API_URL=http://localhost:4000
+LICENSE_KEY=<key issued by the player-valuation-api developer portal>
 ```
+
+The license key is **server-side only** — it is read by the catch-all proxy at
+`app/api/valuation/[...path]/route.ts` and never sent to the browser. Generate
+one by registering a developer account at `<VALUATION_API_URL>/portal/`.
 
 ---
 

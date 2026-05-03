@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account — Developer Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-2xl mx-auto p-6">
+    <header class="flex items-center justify-between mb-8">
+      <a href="/portal/" class="text-lg font-semibold">Player Valuation API</a>
+      <nav id="nav" class="flex items-center gap-4 text-sm"></nav>
+    </header>
+
+    <main class="space-y-6">
+      <section class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold mb-2">Account</h2>
+        <p class="text-sm text-gray-600">
+          Email: <span id="email" class="font-mono"></span><br />
+          Created: <span id="createdAt"></span>
+        </p>
+      </section>
+
+      <section class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-lg font-semibold mb-3">Change password</h3>
+        <form id="pwForm" class="space-y-3">
+          <label class="block">
+            <span class="text-sm font-medium text-gray-700">Current password</span>
+            <input id="oldPassword" type="password" required
+                   class="mt-1 block w-full rounded border-gray-300 shadow-sm" />
+          </label>
+          <label class="block">
+            <span class="text-sm font-medium text-gray-700">New password (min 8 chars)</span>
+            <input id="newPassword" type="password" minlength="8" required
+                   class="mt-1 block w-full rounded border-gray-300 shadow-sm" />
+          </label>
+          <p id="pwErr" class="hidden text-sm text-red-600"></p>
+          <p id="pwOk" class="hidden text-sm text-green-700"></p>
+          <button type="submit"
+                  class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+            Update password
+          </button>
+        </form>
+      </section>
+
+      <section class="bg-white rounded-lg shadow p-6 border border-red-200">
+        <h3 class="text-lg font-semibold text-red-700 mb-2">Delete account</h3>
+        <p class="text-sm text-gray-600 mb-3">
+          Deletes your developer account and revokes all keys you've created.
+          This cannot be undone.
+        </p>
+        <form id="delForm" class="space-y-3">
+          <label class="block">
+            <span class="text-sm font-medium text-gray-700">Confirm with your password</span>
+            <input id="delPassword" type="password" required
+                   class="mt-1 block w-full rounded border-gray-300 shadow-sm" />
+          </label>
+          <p id="delErr" class="hidden text-sm text-red-600"></p>
+          <button type="submit"
+                  class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+            Delete my account
+          </button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="/portal/app.js"></script>
+  <script>
+    (async () => {
+      const me = await window.portal.requireAuth();
+      if (!me) return;
+      window.portal.renderNav(me.email);
+      document.getElementById("email").textContent = me.email;
+      document.getElementById("createdAt").textContent = window.portal.fmtDate(me.createdAt);
+
+      document.getElementById("pwForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        window.portal.hideError("pwErr");
+        document.getElementById("pwOk").classList.add("hidden");
+        const oldPassword = document.getElementById("oldPassword").value;
+        const newPassword = document.getElementById("newPassword").value;
+        try {
+          await window.portal.apiFetch("/dev/auth/change-password", {
+            method: "POST",
+            body: { oldPassword, newPassword },
+          });
+          const ok = document.getElementById("pwOk");
+          ok.textContent = "Password updated.";
+          ok.classList.remove("hidden");
+          document.getElementById("pwForm").reset();
+        } catch (err) {
+          window.portal.showError("pwErr", err.message || "Update failed");
+        }
+      });
+
+      document.getElementById("delForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        window.portal.hideError("delErr");
+        if (!confirm("Permanently delete your account and all your API keys?")) return;
+        const password = document.getElementById("delPassword").value;
+        try {
+          await window.portal.apiFetch("/dev/auth/delete-account", {
+            method: "POST",
+            body: { password },
+          });
+          window.location.href = "/portal/login.html";
+        } catch (err) {
+          window.portal.showError("delErr", err.message || "Delete failed");
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

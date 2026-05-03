@@ -42,6 +42,16 @@ const riskColors: Record<string, string> = {
   High: "bg-red-100 text-red-800 border-red-200",
 };
 
+const injuryColors: Record<string, string> = {
+  "Active": "bg-green-100 text-green-800 border-green-200",
+  "Day-to-Day": "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "10-Day IL": "bg-orange-100 text-orange-800 border-orange-200",
+  "15-Day IL": "bg-orange-100 text-orange-800 border-orange-200",
+  "60-Day IL": "bg-red-100 text-red-800 border-red-200",
+  "Out for Season": "bg-red-100 text-red-800 border-red-200",
+  "Suspended": "bg-gray-100 text-gray-800 border-gray-200",
+};
+
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,6 +141,8 @@ export default function PlayersPage() {
               <TableHead className="font-semibold">Player</TableHead>
               <TableHead className="font-semibold">Team</TableHead>
               <TableHead className="font-semibold">Position(s)</TableHead>
+              <TableHead className="font-semibold">Age</TableHead>
+              <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold">Risk</TableHead>
               <TableHead className="font-semibold">Depth Role</TableHead>
             </TableRow>
@@ -138,14 +150,14 @@ export default function PlayersPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-12">
+                <TableCell colSpan={7} className="text-center py-12">
                   <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={7}
                   className="text-center text-muted-foreground py-12"
                 >
                   No players found.
@@ -176,6 +188,20 @@ export default function PlayersPage() {
                         </Badge>
                       ))}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {player.age ?? "—"}
+                  </TableCell>
+                  <TableCell>
+                    {player.injuryStatus ? (
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full border ${injuryColors[player.injuryStatus] ?? ""}`}
+                      >
+                        {player.injuryStatus}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {player.risk ? (
