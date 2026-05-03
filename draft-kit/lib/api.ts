@@ -1,18 +1,11 @@
 import { ApiClient } from "@/lib/shared/apiClient";
 
+// new URL() requires an absolute URL when called with a single argument.
+// In the browser we prepend the current origin; on the server the Route Handler
+// is never called directly so this branch is unreachable in practice.
 const baseUrl =
-  process.env.NEXT_PUBLIC_API_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL;
+  typeof window !== "undefined"
+    ? `${window.location.origin}/api/valuation`
+    : "http://localhost:3000/api/valuation";
 
-if (!baseUrl) {
-  // Fail fast with a clear error in development.
-  throw new Error(
-    "Missing NEXT_PUBLIC_API_URL (or NEXT_PUBLIC_API_BASE_URL) env var for ApiClient. " +
-      "Set it to your deployed API base URL, e.g. https://cse-416-mvp-team-teal.onrender.com"
-  );
-}
-
-export const apiClient = new ApiClient({
-  baseUrl,
-  apiKey: process.env.NEXT_PUBLIC_API_KEY,
-});
+export const apiClient = new ApiClient({ baseUrl });
