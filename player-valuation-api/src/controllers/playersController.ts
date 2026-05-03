@@ -9,32 +9,35 @@ import {
   type PlayerLean,
 } from "../lib/sgpValuation.js";
 
-function projectionBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
-  if (doc.positions.includes("P")) {
-    const o = {
-      w: doc.projW,
-      era: doc.projERA,
-      whip: doc.projWHIP,
-      k: doc.projK,
-      sv: doc.projSV,
-      ip: doc.projIP,
-    };
+function isPitcher(doc: PlayerLean): boolean {
+  return doc.positions.includes("P");
+}
+
+function projStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
+  if (isPitcher(doc)) {
+    const o = { w: doc.projW, era: doc.projERA, whip: doc.projWHIP, k: doc.projK, sv: doc.projSV, ip: doc.projIP };
     if (Object.values(o).every((v) => v === undefined)) return undefined;
     return o;
   }
-  const o = {
-    hr: doc.projHR,
-    rbi: doc.projRBI,
-    r: doc.projR,
-    sb: doc.projSB,
-    avg: doc.projAVG,
-  };
+  const o = { hr: doc.projHR, rbi: doc.projRBI, r: doc.projR, sb: doc.projSB, avg: doc.projAVG };
+  if (Object.values(o).every((v) => v === undefined)) return undefined;
+  return o;
+}
+
+function prevStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
+  if (isPitcher(doc)) {
+    const o = { w: doc.prevW, era: doc.prevERA, whip: doc.prevWHIP, k: doc.prevK, sv: doc.prevSV, ip: doc.prevIP };
+    if (Object.values(o).every((v) => v === undefined)) return undefined;
+    return o;
+  }
+  const o = { games: doc.prevGames, hr: doc.prevHR, rbi: doc.prevRBI, r: doc.prevR, sb: doc.prevSB, avg: doc.prevAVG };
   if (Object.values(o).every((v) => v === undefined)) return undefined;
   return o;
 }
 
 function toPlayer(doc: PlayerLean) {
-  const projections = projectionBlock(doc);
+  const projStats = projStatsBlock(doc);
+  const prevStats = prevStatsBlock(doc);
   return {
     id: String(doc._id),
     mlbPlayerId: doc.mlbPlayerId ?? undefined,
@@ -46,8 +49,13 @@ function toPlayer(doc: PlayerLean) {
     ...(doc.throws && { throws: doc.throws as "R" | "L" }),
     ...(doc.depthRole && { depthRole: doc.depthRole }),
     ...(doc.risk && { risk: doc.risk as "Low" | "Med" | "High" }),
+    ...(doc.age != null && { age: doc.age }),
+    ...(doc.injuryStatus != null && { injuryStatus: doc.injuryStatus }),
+    ...(doc.injuryNote != null && { injuryNote: doc.injuryNote }),
+    ...(doc.injuryReturn != null && { injuryReturn: doc.injuryReturn instanceof Date ? doc.injuryReturn.toISOString() : doc.injuryReturn }),
     projGames: doc.projGames,
-    ...(projections && { projections }),
+    ...(projStats && { projStats }),
+    ...(prevStats && { prevStats }),
   };
 }
 

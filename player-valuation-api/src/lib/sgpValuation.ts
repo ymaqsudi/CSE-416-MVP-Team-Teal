@@ -63,19 +63,37 @@ export type PlayerLean = {
   risk?: string;
   isEligible?: boolean;
   projGames?: number;
-  /** Hitter counting + rate projections */
+  age?: number | null;
+  injuryStatus?: string | null;
+  injuryNote?: string | null;
+  injuryReturn?: Date | null;
+  /** Hitter 2026 projections */
   projHR?: number;
   projRBI?: number;
   projR?: number;
   projSB?: number;
   projAVG?: number;
-  /** Pitcher projections */
+  /** Pitcher 2026 projections */
   projW?: number;
   projERA?: number;
   projWHIP?: number;
   projK?: number;
   projSV?: number;
   projIP?: number;
+  /** Hitter 2025 actual stats */
+  prevGames?: number;
+  prevHR?: number;
+  prevRBI?: number;
+  prevR?: number;
+  prevSB?: number;
+  prevAVG?: number;
+  /** Pitcher 2025 actual stats */
+  prevW?: number;
+  prevERA?: number;
+  prevWHIP?: number;
+  prevK?: number;
+  prevSV?: number;
+  prevIP?: number;
 };
 
 function depthModifier(depthRole: string | undefined): number {

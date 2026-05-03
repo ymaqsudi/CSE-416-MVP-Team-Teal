@@ -1,6 +1,7 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import fs from "fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
@@ -10,162 +11,297 @@ import { PlayerModel } from "../models/Player.js";
 import { TransactionModel } from "../models/Transaction.js";
 import { SessionModel } from "../models/Session.js";
 
-/** MLB Stats API team ids (abbrev → id). */
-const TID = {
-  BOS: 111,
-  ARI: 109,
-  BAL: 110,
-  NYM: 121,
-  CIN: 113,
-  HOU: 117,
-  MIL: 158,
-  KCR: 118,
-  CLE: 114,
-  ATL: 144,
-  PHI: 143,
-  SDP: 135,
-  TOR: 141,
-  SEA: 136,
-  CWS: 145,
-  PIT: 134,
-  MIA: 146,
-  WSH: 120,
-  TEX: 140,
-  MIN: 142,
-  DET: 116,
-  COL: 115,
-  NYY: 147,
-  LAD: 119,
-  TBR: 139,
-} as const;
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-type Abbr = keyof typeof TID;
+type InjuryStatusValue =
+  | "Active" | "Day-to-Day"
+  | "10-Day IL" | "15-Day IL" | "60-Day IL"
+  | "Out for Season" | "Suspended";
 
-function hit(
-  mlbPlayerId: number,
-  name: string,
-  abbr: Abbr,
-  positions: string[],
-  depthRole: string,
-  risk: string,
-  s: { hr: number; rbi: number; r: number; sb: number; avg: number },
-  projGames = 162
-) {
-  return {
-    mlbPlayerId,
-    mlbTeamId: TID[abbr],
-    name,
-    mlbTeam: abbr,
-    positions,
-    depthRole,
-    risk,
-    baseValue: 10,
-    projGames,
-    projHR: s.hr,
-    projRBI: s.rbi,
-    projR: s.r,
-    projSB: s.sb,
-    projAVG: s.avg,
-  };
+interface FgStats { [key: string]: number | null | undefined }
+
+interface FgPlayer {
+  name: string;
+  mlbamId: number;
+  isPitcher: boolean;
+  projStats: FgStats | null;
+  prevStats: FgStats | null;
 }
 
-function pit(
-  mlbPlayerId: number,
-  name: string,
-  abbr: Abbr,
-  depthRole: string,
-  risk: string,
-  s: { w: number; era: number; whip: number; k: number; sv: number; ip: number },
-  projGames = 162
-) {
-  return {
-    mlbPlayerId,
-    mlbTeamId: TID[abbr],
-    name,
-    mlbTeam: abbr,
-    positions: ["P"],
-    depthRole,
-    risk,
-    baseValue: 10,
-    projGames,
-    projW: s.w,
-    projERA: s.era,
-    projWHIP: s.whip,
-    projK: s.k,
-    projSV: s.sv,
-    projIP: s.ip,
-  };
+interface ProjectionsFile {
+  players: Record<string, FgPlayer>;
 }
 
-/** Example MLBAM ids + rotisserie projections for SGP valuation demos. */
-const PLAYERS = [
-  hit(681001, "Jarren Duran", "BOS", ["OF"], "Starter", "Med", { hr: 18, rbi: 62, r: 88, sb: 28, avg: 0.286 }),
-  hit(681002, "Corbin Carroll", "ARI", ["OF"], "Starter", "Med", { hr: 22, rbi: 72, r: 102, sb: 45, avg: 0.278 }),
-  hit(681003, "Gunnar Henderson", "BAL", ["SS", "3B"], "Starter", "Low", { hr: 28, rbi: 88, r: 98, sb: 22, avg: 0.282 }),
-  hit(681004, "Francisco Lindor", "NYM", ["SS"], "Starter", "Low", { hr: 26, rbi: 82, r: 95, sb: 18, avg: 0.273 }),
-  hit(681005, "Elly De La Cruz", "CIN", ["SS", "3B"], "Starter", "High", { hr: 24, rbi: 76, r: 92, sb: 38, avg: 0.268 }),
-  hit(681006, "Kyle Tucker", "HOU", ["OF"], "Starter", "Med", { hr: 27, rbi: 95, r: 88, sb: 14, avg: 0.285 }),
-  hit(681007, "William Contreras", "MIL", ["C"], "Starter", "Low", { hr: 20, rbi: 72, r: 68, sb: 4, avg: 0.276 }),
-  hit(681008, "Adley Rutschman", "BAL", ["C"], "Starter", "Low", { hr: 22, rbi: 78, r: 76, sb: 2, avg: 0.271 }),
-  hit(681009, "Matt McLain", "CIN", ["SS", "2B"], "Starter", "High", { hr: 16, rbi: 52, r: 72, sb: 18, avg: 0.262 }),
-  hit(681010, "Bobby Witt Jr.", "KCR", ["SS", "3B"], "Starter", "Low", { hr: 32, rbi: 92, r: 108, sb: 42, avg: 0.288 }),
-  hit(681011, "Yordan Alvarez", "HOU", ["OF"], "Starter", "Med", { hr: 38, rbi: 108, r: 86, sb: 2, avg: 0.295 }),
-  hit(681012, "José Ramírez", "CLE", ["3B"], "Starter", "Low", { hr: 30, rbi: 96, r: 90, sb: 24, avg: 0.284 }),
-  hit(681013, "Shohei Ohtani", "LAD", ["OF"], "Starter", "Low", { hr: 42, rbi: 102, r: 98, sb: 18, avg: 0.292 }),
-  hit(681014, "Mookie Betts", "LAD", ["OF", "SS"], "Starter", "Med", { hr: 28, rbi: 78, r: 102, sb: 14, avg: 0.278 }),
-  hit(681015, "Randy Arozarena", "TBR", ["OF"], "Starter", "Med", { hr: 20, rbi: 72, r: 82, sb: 18, avg: 0.265 }),
-  pit(681016, "Zac Gallen", "ARI", "Starter", "Med", { w: 15, era: 3.35, whip: 1.12, k: 198, sv: 0, ip: 195 }),
-  pit(681017, "Gerrit Cole", "NYY", "Starter", "High", { w: 14, era: 3.55, whip: 1.08, k: 205, sv: 0, ip: 178 }),
-  pit(681018, "Spencer Strider", "ATL", "Starter", "High", { w: 12, era: 3.25, whip: 1.15, k: 210, sv: 0, ip: 165 }),
-  pit(681019, "Emmanuel Clase", "CLE", "Starter", "Low", { w: 4, era: 2.85, whip: 1.02, k: 72, sv: 38, ip: 68 }),
-  hit(681020, "Pete Alonso", "NYM", ["1B"], "Starter", "Low", { hr: 38, rbi: 102, r: 78, sb: 2, avg: 0.248 }),
-  hit(681021, "Freddie Freeman", "LAD", ["1B"], "Starter", "Low", { hr: 28, rbi: 98, r: 92, sb: 8, avg: 0.302 }),
-  hit(665742, "Juan Soto", "NYY", ["OF"], "Starter", "Low", { hr: 39, rbi: 105, r: 108, sb: 8, avg: 0.288 }),
-  hit(681023, "Aaron Judge", "NYY", ["OF"], "Starter", "Med", { hr: 45, rbi: 112, r: 102, sb: 4, avg: 0.278 }),
-  hit(681024, "Ronald Acuña Jr.", "ATL", ["OF"], "Starter", "High", { hr: 32, rbi: 82, r: 108, sb: 38, avg: 0.282 }),
-  hit(681025, "Trea Turner", "PHI", ["SS"], "Starter", "Low", { hr: 18, rbi: 68, r: 95, sb: 32, avg: 0.285 }),
-  hit(681026, "Bryce Harper", "PHI", ["1B", "OF"], "Starter", "Med", { hr: 32, rbi: 96, r: 88, sb: 8, avg: 0.282 }),
-  hit(681027, "Fernando Tatis Jr.", "SDP", ["OF"], "Starter", "Med", { hr: 34, rbi: 88, r: 98, sb: 22, avg: 0.278 }),
-  hit(681028, "Vladimir Guerrero Jr.", "TOR", ["1B"], "Starter", "Low", { hr: 32, rbi: 98, r: 82, sb: 4, avg: 0.278 }),
-  hit(681029, "Bo Bichette", "TOR", ["SS"], "Starter", "Med", { hr: 22, rbi: 76, r: 88, sb: 12, avg: 0.276 }),
-  hit(681030, "Julio Rodríguez", "SEA", ["OF"], "Starter", "Low", { hr: 30, rbi: 88, r: 98, sb: 28, avg: 0.278 }),
-  hit(681031, "Cal Raleigh", "SEA", ["C"], "Starter", "Low", { hr: 28, rbi: 82, r: 72, sb: 0, avg: 0.252 }),
-  hit(681032, "Luis Robert Jr.", "CWS", ["OF"], "Starter", "High", { hr: 24, rbi: 72, r: 78, sb: 22, avg: 0.268 }),
-  pit(681033, "Paul Skenes", "PIT", "Starter", "Med", { w: 13, era: 3.05, whip: 1.05, k: 195, sv: 0, ip: 172 }),
-  hit(681034, "Oneil Cruz", "PIT", ["SS"], "Starter", "High", { hr: 26, rbi: 78, r: 82, sb: 18, avg: 0.262 }),
-  hit(681035, "Nolan Jones", "COL", ["OF"], "Starter", "Med", { hr: 22, rbi: 76, r: 78, sb: 12, avg: 0.272 }),
-  pit(681036, "Eury Pérez", "MIA", "Starter", "High", { w: 11, era: 3.45, whip: 1.18, k: 168, sv: 0, ip: 148 }),
-  hit(681037, "Jazz Chisholm Jr.", "MIA", ["OF", "2B"], "Starter", "Med", { hr: 24, rbi: 72, r: 82, sb: 28, avg: 0.265 }),
-  hit(681038, "CJ Abrams", "WSH", ["SS"], "Starter", "Low", { hr: 18, rbi: 62, r: 88, sb: 38, avg: 0.268 }),
-  hit(681039, "Jackson Holliday", "BAL", ["SS", "2B"], "Backup", "High", { hr: 10, rbi: 42, r: 58, sb: 10, avg: 0.248 }, 130),
-  hit(681040, "Evan Carter", "TEX", ["OF"], "Starter", "Med", { hr: 16, rbi: 58, r: 72, sb: 14, avg: 0.262 }),
-  hit(681041, "Josh Jung", "TEX", ["3B"], "Starter", "High", { hr: 22, rbi: 76, r: 68, sb: 2, avg: 0.258 }),
-  hit(681042, "Royce Lewis", "MIN", ["3B"], "Starter", "High", { hr: 24, rbi: 78, r: 72, sb: 8, avg: 0.268 }),
-  pit(681043, "Tarik Skubal", "DET", "Starter", "Low", { w: 16, era: 2.95, whip: 1.02, k: 215, sv: 0, ip: 198 }),
-  hit(681044, "Riley Greene", "DET", ["OF"], "Starter", "Med", { hr: 22, rbi: 72, r: 82, sb: 8, avg: 0.272 }),
-  hit(681045, "Bryan Reynolds", "PIT", ["OF"], "Starter", "Low", { hr: 24, rbi: 82, r: 78, sb: 6, avg: 0.278 }),
-  hit(681046, "Christian Yelich", "MIL", ["OF"], "Starter", "Med", { hr: 20, rbi: 72, r: 82, sb: 12, avg: 0.272 }),
-];
+interface RosterInfo {
+  teamAbbr: string;
+  teamId: number;
+  statusDesc: string;
+  positionAbbr: string;
+}
+
+interface PersonDetail {
+  age: number;
+  bats: string;
+  throws: string;
+}
+
+// ---------------------------------------------------------------------------
+// MLB team IDs
+// ---------------------------------------------------------------------------
+
+const TID: Record<string, number> = {
+  ARI: 109, ATL: 144, BAL: 110, BOS: 111, CHC: 112, CWS: 145,
+  CIN: 113, CLE: 114, COL: 115, DET: 116, HOU: 117, KCR: 118,
+  LAA: 108, LAD: 119, MIA: 146, MIL: 158, MIN: 142, NYM: 121,
+  NYY: 147, OAK: 133, PHI: 143, PIT: 134, SDP: 135, SFG: 137,
+  SEA: 136, STL: 138, TBR: 139, TEX: 140, TOR: 141, WSH: 120,
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const MLB_API = "https://statsapi.mlb.com/api/v1";
+
+async function fetchJson(url: string): Promise<unknown> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+  return res.json();
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function mapInjuryStatus(description: string): InjuryStatusValue {
+  const d = description.toLowerCase();
+  if (d.includes("day-to-day")) return "Day-to-Day";
+  if (d.includes("10-day")) return "10-Day IL";
+  if (d.includes("15-day")) return "15-Day IL";
+  if (d.includes("60-day")) return "60-Day IL";
+  if (d.includes("suspend")) return "Suspended";
+  if (d.includes("restricted") || d.includes("bereavement") || d.includes("paternity")) return "Active";
+  if (d.includes("season") || d.includes("temporarily inactive")) return "Out for Season";
+  return "Active";
+}
+
+function mapPosition(mlbAbbr: string): string {
+  if (["LF", "CF", "RF"].includes(mlbAbbr)) return "OF";
+  if (["SP", "RP"].includes(mlbAbbr)) return "P";
+  if (mlbAbbr === "DH") return "U";
+  return mlbAbbr; // 1B, 2B, 3B, SS, C, P already match
+}
+
+function riskFromInjury(status: InjuryStatusValue): "Low" | "Med" | "High" {
+  if (status === "Active") return "Low";
+  if (status === "Day-to-Day") return "Med";
+  return "High";
+}
+
+// ---------------------------------------------------------------------------
+// MLB Stats API fetchers
+// ---------------------------------------------------------------------------
+
+async function fetchRosterMap(): Promise<Map<number, RosterInfo>> {
+  const map = new Map<number, RosterInfo>();
+  const teams = Object.entries(TID);
+
+  console.log(`Fetching 40-man rosters for ${teams.length} teams...`);
+  for (let i = 0; i < teams.length; i++) {
+    const [abbr, teamId] = teams[i];
+    try {
+      const data = await fetchJson(
+        `${MLB_API}/teams/${teamId}/roster?rosterType=40Man&season=2026`
+      ) as { roster?: any[] };
+      for (const entry of data.roster ?? []) {
+        const pid: number = entry.person?.id;
+        if (!pid) continue;
+        map.set(pid, {
+          teamAbbr: abbr,
+          teamId,
+          statusDesc: entry.status?.description ?? "Active",
+          positionAbbr: entry.position?.abbreviation ?? "",
+        });
+      }
+    } catch (e) {
+      console.warn(`  Warning: roster fetch failed for ${abbr}`);
+    }
+    if (i < teams.length - 1) await delay(120);
+  }
+  console.log(`  Found ${map.size} players across all rosters.`);
+  return map;
+}
+
+async function fetchPersonDetails(ids: number[]): Promise<Map<number, PersonDetail>> {
+  const map = new Map<number, PersonDetail>();
+  const chunkSize = 50;
+
+  console.log(`Fetching person details for ${ids.length} players...`);
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    try {
+      const data = await fetchJson(
+        `${MLB_API}/people?personIds=${chunk.join(",")}`
+      ) as { people?: any[] };
+      for (const p of data.people ?? []) {
+        map.set(p.id, {
+          age: p.currentAge ?? 0,
+          bats: p.batSide?.code ?? "",
+          throws: p.pitchHand?.code ?? "",
+        });
+      }
+    } catch (e) {
+      console.warn(`  Warning: person details failed for chunk at index ${i}`);
+    }
+    if (i + chunkSize < ids.length) await delay(150);
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// Build player document
+// ---------------------------------------------------------------------------
+
+function buildPlayerDoc(
+  mlbamId: number,
+  roster: RosterInfo,
+  person: PersonDetail | undefined,
+  fg: FgPlayer | undefined,
+): object {
+  const injuryStatus = mapInjuryStatus(roster.statusDesc);
+  const position = mapPosition(roster.positionAbbr);
+  const isPitcher = position === "P" || fg?.isPitcher === true;
+
+  const doc: Record<string, unknown> = {
+    mlbPlayerId: mlbamId,
+    mlbTeamId: roster.teamId,
+    name: fg?.name ?? `Player ${mlbamId}`,
+    mlbTeam: roster.teamAbbr,
+    positions: [position],
+    depthRole: "Starter",
+    risk: riskFromInjury(injuryStatus),
+    isEligible: true,
+    projGames: injuryStatus === "60-Day IL" || injuryStatus === "Out for Season" ? 100 : 162,
+    age: person?.age ?? null,
+    injuryStatus,
+    injuryNote: null,
+    injuryReturn: null,
+  };
+
+  if (person?.bats) doc.bats = person.bats;
+  if (person?.throws) doc.throws = person.throws;
+
+  // 2026 projected stats
+  if (fg?.projStats) {
+    const p = fg.projStats;
+    if (isPitcher) {
+      doc.projW    = p.w    ?? undefined;
+      doc.projERA  = p.era  ?? undefined;
+      doc.projWHIP = p.whip ?? undefined;
+      doc.projK    = p.k    ?? undefined;
+      doc.projSV   = p.sv   ?? undefined;
+      doc.projIP   = p.ip   ?? undefined;
+    } else {
+      doc.projHR  = p.hr  ?? undefined;
+      doc.projRBI = p.rbi ?? undefined;
+      doc.projR   = p.r   ?? undefined;
+      doc.projSB  = p.sb  ?? undefined;
+      doc.projAVG = p.avg ?? undefined;
+    }
+  }
+
+  // 2025 actual stats
+  if (fg?.prevStats) {
+    const p = fg.prevStats;
+    if (isPitcher) {
+      doc.prevW    = p.w    ?? undefined;
+      doc.prevERA  = p.era  ?? undefined;
+      doc.prevWHIP = p.whip ?? undefined;
+      doc.prevK    = p.k    ?? undefined;
+      doc.prevSV   = p.sv   ?? undefined;
+      doc.prevIP   = p.ip   ?? undefined;
+    } else {
+      doc.prevGames = p.games ?? undefined;
+      doc.prevHR    = p.hr    ?? undefined;
+      doc.prevRBI   = p.rbi   ?? undefined;
+      doc.prevR     = p.r     ?? undefined;
+      doc.prevSB    = p.sb    ?? undefined;
+      doc.prevAVG   = p.avg   ?? undefined;
+    }
+  }
+
+  return doc;
+}
+
+// ---------------------------------------------------------------------------
+// Seed transactions (unchanged from original)
+// ---------------------------------------------------------------------------
 
 const TRANSACTIONS = [
-  { title: "Placed on 60-day IL", date: new Date("2025-03-01"), source: "MLB" },
-  { title: "Signed to extension", date: new Date("2025-02-28"), source: "MLB" },
-  { title: "Traded to new team", date: new Date("2025-02-25"), source: "MLB" },
-  { title: "Optioned to minors", date: new Date("2025-03-02"), source: "MLB" },
-  { title: "Activated from IL", date: new Date("2025-02-20"), source: "MLB" },
-  { title: "Placed on 15-day IL", date: new Date("2025-03-03"), source: "MLB" },
-  { title: "Designated for assignment", date: new Date("2025-02-22"), source: "MLB" },
-  { title: "Recalled from minors", date: new Date("2025-03-04"), source: "MLB" },
+  { title: "Placed on 60-day IL",        date: new Date("2025-03-01"), source: "MLB" },
+  { title: "Signed to extension",        date: new Date("2025-02-28"), source: "MLB" },
+  { title: "Traded to new team",         date: new Date("2025-02-25"), source: "MLB" },
+  { title: "Optioned to minors",         date: new Date("2025-03-02"), source: "MLB" },
+  { title: "Activated from IL",          date: new Date("2025-02-20"), source: "MLB" },
+  { title: "Placed on 15-day IL",        date: new Date("2025-03-03"), source: "MLB" },
+  { title: "Designated for assignment",  date: new Date("2025-02-22"), source: "MLB" },
+  { title: "Recalled from minors",       date: new Date("2025-03-04"), source: "MLB" },
 ];
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
 async function seed() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    console.error("Set MONGODB_URI in .env");
-    console.error("  - File must be: player-valuation-api/.env");
-    console.error("  - Format: MONGODB_URI=mongodb+srv://... (no spaces around =)");
+    console.error("Set MONGODB_URI in player-valuation-api/.env");
     process.exit(1);
   }
+
+  // Load projections.json if present
+  const projPath = path.resolve(__dirname, "projections.json");
+  let fgPlayers: Record<string, FgPlayer> = {};
+  if (fs.existsSync(projPath)) {
+    const raw = JSON.parse(fs.readFileSync(projPath, "utf-8")) as ProjectionsFile;
+    fgPlayers = raw.players ?? {};
+    console.log(`Loaded ${Object.keys(fgPlayers).length} players from projections.json`);
+  } else {
+    console.warn(
+      "projections.json not found — seeding without FanGraphs stats.\n" +
+      "Run fetch_projections.py first to include projections and 2025 stats."
+    );
+  }
+
+  // Fetch roster map (player → team + injury status)
+  const rosterMap = await fetchRosterMap();
+
+  // Fetch player ages and handedness
+  const allIds = [...rosterMap.keys()];
+  const personMap = await fetchPersonDetails(allIds);
+
+  // Merge into player documents
+  console.log("Building player documents...");
+  const docs: object[] = [];
+
+  for (const [mlbamId, roster] of rosterMap) {
+    const fg = fgPlayers[String(mlbamId)];
+    const person = personMap.get(mlbamId);
+    docs.push(buildPlayerDoc(mlbamId, roster, person, fg));
+  }
+
+  // Also add any FanGraphs players that weren't on a 40-man roster
+  // (e.g., recently promoted or minor-league-contract players with projections)
+  for (const [idStr, fg] of Object.entries(fgPlayers)) {
+    const mlbamId = Number(idStr);
+    if (!rosterMap.has(mlbamId)) {
+      // Skip if no roster info — can't assign a team
+    }
+  }
+
+  // Connect and seed
   await mongoose.connect(uri);
   console.log("Connected to MongoDB.");
 
@@ -173,7 +309,7 @@ async function seed() {
   await TransactionModel.deleteMany({});
   await SessionModel.deleteMany({});
 
-  const inserted = await PlayerModel.insertMany(PLAYERS);
+  const inserted = await PlayerModel.insertMany(docs, { ordered: false });
   console.log(`Inserted ${inserted.length} players.`);
 
   const txWithPlayer = TRANSACTIONS.map((t, i) => ({
@@ -184,7 +320,7 @@ async function seed() {
   console.log(`Inserted ${txWithPlayer.length} transactions.`);
 
   await mongoose.disconnect();
-  console.log("Seed done.");
+  console.log("Seed complete.");
 }
 
 seed().catch((e) => {

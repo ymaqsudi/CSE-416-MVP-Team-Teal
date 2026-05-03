@@ -34,6 +34,30 @@ const playerSchema = new mongoose.Schema(
     projK: { type: Number },
     projSV: { type: Number },
     projIP: { type: Number },
+    /** Age */
+    age: { type: Number },
+    /** Injury */
+    injuryStatus: {
+      type: String,
+      enum: ["Active", "Day-to-Day", "10-Day IL", "15-Day IL", "60-Day IL", "Out for Season", "Suspended"],
+      default: null,
+    },
+    injuryNote:   { type: String, default: null },
+    injuryReturn: { type: Date,   default: null },
+    /** 2025 actual stats — hitters */
+    prevGames: { type: Number },
+    prevHR:    { type: Number },
+    prevRBI:   { type: Number },
+    prevR:     { type: Number },
+    prevSB:    { type: Number },
+    prevAVG:   { type: Number },
+    /** 2025 actual stats — pitchers */
+    prevW:    { type: Number },
+    prevERA:  { type: Number },
+    prevWHIP: { type: Number },
+    prevK:    { type: Number },
+    prevSV:   { type: Number },
+    prevIP:   { type: Number },
   },
   { timestamps: true }
 );

@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { Player, Valuation } from "@/lib/shared/types";
+import { Player, Valuation, HitterStats, PitcherStats } from "@/lib/shared/types";
 import { getEligibleSlots } from "@/lib/shared/eligibility";
 import { apiClient } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,16 @@ const riskColors: Record<string, string> = {
   Low: "bg-green-100 text-green-800 border-green-200",
   Med: "bg-yellow-100 text-yellow-800 border-yellow-200",
   High: "bg-red-100 text-red-800 border-red-200",
+};
+
+const injuryColors: Record<string, string> = {
+  "Active": "bg-green-100 text-green-800 border-green-200",
+  "Day-to-Day": "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "10-Day IL": "bg-orange-100 text-orange-800 border-orange-200",
+  "15-Day IL": "bg-orange-100 text-orange-800 border-orange-200",
+  "60-Day IL": "bg-red-100 text-red-800 border-red-200",
+  "Out for Season": "bg-red-100 text-red-800 border-red-200",
+  "Suspended": "bg-gray-100 text-gray-800 border-gray-200",
 };
 
 export default function PlayerDetailPage({
@@ -191,7 +201,12 @@ export default function PlayerDetailPage({
 
       {/* Player Header */}
       <div>
-        <h1 className="text-3xl font-bold text-foreground">{player.name}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-foreground">{player.name}</h1>
+          {player.age != null && (
+            <span className="text-lg text-muted-foreground font-medium">Age {player.age}</span>
+          )}
+        </div>
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <span className="text-muted-foreground font-mono font-medium">
             {player.mlbTeam ?? "—"}
@@ -214,7 +229,26 @@ export default function PlayerDetailPage({
               </span>
             </>
           )}
+          {player.injuryStatus && player.injuryStatus !== "Active" && (
+            <>
+              <Separator orientation="vertical" className="h-4" />
+              <span
+                className={`text-xs font-medium px-2 py-0.5 rounded-full border ${injuryColors[player.injuryStatus] ?? ""}`}
+              >
+                {player.injuryStatus}
+              </span>
+            </>
+          )}
         </div>
+        {player.injuryStatus && player.injuryStatus !== "Active" && (player.injuryNote || player.injuryReturn) && (
+          <div className="mt-2 text-sm text-muted-foreground">
+            {player.injuryNote && <span>{player.injuryNote}</span>}
+            {player.injuryNote && player.injuryReturn && <span className="mx-1">·</span>}
+            {player.injuryReturn && (
+              <span>Est. return {new Date(player.injuryReturn).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+            )}
+          </div>
+        )}
       </div>
 
       <Separator />
@@ -311,9 +345,102 @@ export default function PlayerDetailPage({
                 {player.bats ?? "—"} / {player.throws ?? "—"}
               </p>
             </div>
+            {player.age != null && (
+              <div>
+                <p className="text-muted-foreground">Age</p>
+                <p className="font-medium mt-0.5">{player.age}</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
+
+      {/* 2025 Stats */}
+      {player.prevStats && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">2025 Stats</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {player.positions.includes("P") ? (
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {[
+                  { label: "W", value: (player.prevStats as PitcherStats).w },
+                  { label: "ERA", value: (player.prevStats as PitcherStats).era?.toFixed(2) },
+                  { label: "WHIP", value: (player.prevStats as PitcherStats).whip?.toFixed(2) },
+                  { label: "K", value: (player.prevStats as PitcherStats).k },
+                  { label: "SV", value: (player.prevStats as PitcherStats).sv },
+                  { label: "IP", value: (player.prevStats as PitcherStats).ip },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {[
+                  { label: "G", value: (player.prevStats as HitterStats).games },
+                  { label: "HR", value: (player.prevStats as HitterStats).hr },
+                  { label: "RBI", value: (player.prevStats as HitterStats).rbi },
+                  { label: "R", value: (player.prevStats as HitterStats).r },
+                  { label: "SB", value: (player.prevStats as HitterStats).sb },
+                  { label: "AVG", value: (player.prevStats as HitterStats).avg?.toFixed(3) },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 2026 Projections */}
+      {player.projStats && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">2026 Projections</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {player.positions.includes("P") ? (
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {[
+                  { label: "W", value: (player.projStats as PitcherStats).w },
+                  { label: "ERA", value: (player.projStats as PitcherStats).era?.toFixed(2) },
+                  { label: "WHIP", value: (player.projStats as PitcherStats).whip?.toFixed(2) },
+                  { label: "K", value: (player.projStats as PitcherStats).k },
+                  { label: "SV", value: (player.projStats as PitcherStats).sv },
+                  { label: "IP", value: (player.projStats as PitcherStats).ip },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {[
+                  { label: "HR", value: (player.projStats as HitterStats).hr },
+                  { label: "RBI", value: (player.projStats as HitterStats).rbi },
+                  { label: "R", value: (player.projStats as HitterStats).r },
+                  { label: "SB", value: (player.projStats as HitterStats).sb },
+                  { label: "AVG", value: (player.projStats as HitterStats).avg?.toFixed(3) },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Assignment Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>

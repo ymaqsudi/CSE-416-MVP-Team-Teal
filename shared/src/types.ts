@@ -6,6 +6,29 @@ export type Position =
 
 export type DepthRole = "Starter" | "Backup" | "Platoon" | "Bench" | "Minors" | "Unknown";
 
+export type InjuryStatus =
+  | "Active" | "Day-to-Day"
+  | "10-Day IL" | "15-Day IL" | "60-Day IL"
+  | "Out for Season" | "Suspended";
+
+export interface HitterStats {
+  games?: number;
+  hr?: number;
+  rbi?: number;
+  r?: number;
+  sb?: number;
+  avg?: number;
+}
+
+export interface PitcherStats {
+  w?: number;
+  era?: number;
+  whip?: number;
+  k?: number;
+  sv?: number;
+  ip?: number;
+}
+
 export interface Player {
   id: string;              // stable unique id
   name: string;
@@ -15,6 +38,12 @@ export interface Player {
   throws?: "R" | "L";
   depthRole?: DepthRole;   // MVP: can be "Unknown"
   risk?: "Low" | "Med" | "High";
+  age?: number;
+  injuryStatus?: InjuryStatus | null;
+  injuryNote?: string | null;
+  injuryReturn?: string | null;       // ISO date string
+  prevStats?: HitterStats | PitcherStats;
+  projStats?: HitterStats | PitcherStats;
 }
 
 export interface Valuation {
