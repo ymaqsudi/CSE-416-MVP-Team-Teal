@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Fetch 2026 Steamer projections and 2025 actual stats from FanGraphs.
+Fetch 2026 Steamer projections and 2025 actual stats from FanGraphs, plus
+2025 Statcast advanced metrics from Baseball Savant (xStats, exit velo,
+sprint speed, whiff rate, etc.).
+
 Outputs projections.json in the same directory, keyed by MLBAM player ID.
 
 Usage:
@@ -10,6 +13,8 @@ Usage:
 The resulting projections.json is read by seed.ts during the seed run.
 """
 
+import csv
+import io
 import requests
 import json
 import os
@@ -30,6 +35,26 @@ ENDPOINTS = {
     "prev_hitters":   f"{BASE}/leaders/major-league/data?pos=all&stats=bat&lg=all&qual=0&season=2025&season1=2025&month=0&hand=&team=0&pageitems=2000&pagenum=1&type=8&ind=0",
     "prev_pitchers":  f"{BASE}/leaders/major-league/data?pos=all&stats=pit&lg=all&qual=0&season=2025&season1=2025&month=0&hand=&team=0&pageitems=2000&pagenum=1&type=8&ind=0",
 }
+
+SAVANT_ENDPOINTS = {
+    "hit_xstats":   "https://baseballsavant.mlb.com/leaderboard/custom?year=2025&type=batter&filter=&sort=4&sortDir=desc&min=25&selections=xba,xslg,xwoba,barrel_batted_rate,hard_hit_percent,exit_velocity_avg,k_percent,bb_percent&chart=false&csv=true",
+    "pit_xstats":   "https://baseballsavant.mlb.com/leaderboard/custom?year=2025&type=pitcher&filter=&sort=4&sortDir=desc&min=25&selections=xera,whiff_percent,barrel_batted_rate,hard_hit_percent,exit_velocity_avg,k_percent,bb_percent&chart=false&csv=true",
+    "sprint_speed": "https://baseballsavant.mlb.com/leaderboard/sprint_speed?year=2025&position=&team=&min=0&csv=true",
+}
+
+
+def fetch_csv(url: str, label: str) -> list[dict]:
+    print(f"  Fetching {label}...")
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=30)
+        resp.raise_for_status()
+        # Decode with utf-8-sig to strip BOM, so quoted first-column headers parse correctly
+        text = resp.content.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text))
+        return list(reader)
+    except requests.RequestException as e:
+        print(f"  ERROR fetching {label}: {e}", file=sys.stderr)
+        return []
 
 
 def fetch(url: str, label: str) -> list:
@@ -204,6 +229,91 @@ def main():
                 "projStats": None,
                 "prevStats": prev,
             }
+
+    # --- Baseball Savant: hitter xStats ---
+    time.sleep(1)
+    savant_hit_count = 0
+    for row in fetch_csv(SAVANT_ENDPOINTS["hit_xstats"], "2025 Savant hitter xStats"):
+        try:
+            mid = int(row.get("player_id", "") or 0)
+        except (ValueError, TypeError):
+            continue
+        if not mid:
+            continue
+        stats = {
+            "xba":        safe_float(row, "xba"),
+            "xslg":       safe_float(row, "xslg"),
+            "xwoba":      safe_float(row, "xwoba"),
+            "barrelPct":  safe_float(row, "barrel_batted_rate"),
+            "hardHitPct": safe_float(row, "hard_hit_percent"),
+            "exitVelo":   safe_float(row, "exit_velocity_avg"),
+            "kPct":       safe_float(row, "k_percent"),
+            "bbPct":      safe_float(row, "bb_percent"),
+        }
+        if mid in players:
+            players[mid]["savantStats"] = stats
+        else:
+            players[mid] = {
+                "name": row.get("player_name", f"Player {mid}"),
+                "mlbamId": mid,
+                "isPitcher": False,
+                "projStats": None,
+                "prevStats": None,
+                "savantStats": stats,
+            }
+        savant_hit_count += 1
+    print(f"  Merged Savant xStats for {savant_hit_count} hitters.")
+
+    # --- Baseball Savant: pitcher xStats ---
+    time.sleep(1)
+    savant_pit_count = 0
+    for row in fetch_csv(SAVANT_ENDPOINTS["pit_xstats"], "2025 Savant pitcher xStats"):
+        try:
+            mid = int(row.get("player_id", "") or 0)
+        except (ValueError, TypeError):
+            continue
+        if not mid:
+            continue
+        stats = {
+            "xera":              safe_float(row, "xera"),
+            "whiffPct":          safe_float(row, "whiff_percent"),
+            "barrelPctAgainst":  safe_float(row, "barrel_batted_rate"),
+            "hardHitPctAgainst": safe_float(row, "hard_hit_percent"),
+            "exitVeloAgainst":   safe_float(row, "exit_velocity_avg"),
+            "kPct":              safe_float(row, "k_percent"),
+            "bbPct":             safe_float(row, "bb_percent"),
+        }
+        if mid in players:
+            players[mid]["savantStats"] = stats
+        else:
+            players[mid] = {
+                "name": row.get("player_name", f"Player {mid}"),
+                "mlbamId": mid,
+                "isPitcher": True,
+                "projStats": None,
+                "prevStats": None,
+                "savantStats": stats,
+            }
+        savant_pit_count += 1
+    print(f"  Merged Savant xStats for {savant_pit_count} pitchers.")
+
+    # --- Baseball Savant: sprint speed (hitters only) ---
+    time.sleep(1)
+    sprint_count = 0
+    for row in fetch_csv(SAVANT_ENDPOINTS["sprint_speed"], "2025 Savant sprint speed"):
+        try:
+            mid = int(row.get("player_id", "") or 0)
+        except (ValueError, TypeError):
+            continue
+        if not mid or mid not in players:
+            continue
+        speed = safe_float(row, "sprint_speed", "hp_to_1b")
+        if speed is not None:
+            if "savantStats" not in players[mid] or players[mid]["savantStats"] is None:
+                players[mid]["savantStats"] = {}
+            players[mid]["savantStats"]["sprintSpeed"] = speed
+            sprint_count += 1
+    print(f"  Merged sprint speed for {sprint_count} players.")
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "projections.json")
     with open(out_path, "w", encoding="utf-8") as f:

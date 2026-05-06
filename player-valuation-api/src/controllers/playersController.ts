@@ -35,9 +35,29 @@ function prevStatsBlock(doc: PlayerLean): Record<string, number | undefined> | u
   return o;
 }
 
+function savantStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
+  if (isPitcher(doc)) {
+    const o = {
+      xera: doc.xera, whiffPct: doc.whiffPct,
+      barrelPctAgainst: doc.barrelPctAgainst, hardHitPctAgainst: doc.hardHitPctAgainst,
+      exitVeloAgainst: doc.exitVeloAgainst, kPct: doc.kPct, bbPct: doc.bbPct,
+    };
+    if (Object.values(o).every((v) => v === undefined)) return undefined;
+    return o;
+  }
+  const o = {
+    xba: doc.xba, xslg: doc.xslg, xwoba: doc.xwoba,
+    barrelPct: doc.barrelPct, hardHitPct: doc.hardHitPct,
+    exitVelo: doc.exitVelo, kPct: doc.kPct, bbPct: doc.bbPct, sprintSpeed: doc.sprintSpeed,
+  };
+  if (Object.values(o).every((v) => v === undefined)) return undefined;
+  return o;
+}
+
 function toPlayer(doc: PlayerLean) {
   const projStats = projStatsBlock(doc);
   const prevStats = prevStatsBlock(doc);
+  const savantStats = savantStatsBlock(doc);
   return {
     id: String(doc._id),
     mlbPlayerId: doc.mlbPlayerId ?? undefined,
@@ -56,6 +76,7 @@ function toPlayer(doc: PlayerLean) {
     projGames: doc.projGames,
     ...(projStats && { projStats }),
     ...(prevStats && { prevStats }),
+    ...(savantStats && { savantStats }),
   };
 }
 

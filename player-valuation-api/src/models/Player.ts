@@ -58,6 +58,22 @@ const playerSchema = new mongoose.Schema(
     prevK:    { type: Number },
     prevSV:   { type: Number },
     prevIP:   { type: Number },
+    /** Baseball Savant Statcast — hitters (2025) */
+    xba:           { type: Number },
+    xslg:          { type: Number },
+    xwoba:         { type: Number },
+    barrelPct:     { type: Number },
+    hardHitPct:    { type: Number },
+    exitVelo:      { type: Number },
+    kPct:          { type: Number },
+    bbPct:         { type: Number },
+    sprintSpeed:   { type: Number },
+    /** Baseball Savant Statcast — pitchers (2025) */
+    xera:              { type: Number },
+    whiffPct:          { type: Number },
+    barrelPctAgainst:  { type: Number },
+    hardHitPctAgainst: { type: Number },
+    exitVeloAgainst:   { type: Number },
   },
   { timestamps: true }
 );

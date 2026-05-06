@@ -28,6 +28,7 @@ interface FgPlayer {
   isPitcher: boolean;
   projStats: FgStats | null;
   prevStats: FgStats | null;
+  savantStats?: FgStats | null;
 }
 
 interface ProjectionsFile {
@@ -229,6 +230,30 @@ function buildPlayerDoc(
       doc.prevR     = p.r     ?? undefined;
       doc.prevSB    = p.sb    ?? undefined;
       doc.prevAVG   = p.avg   ?? undefined;
+    }
+  }
+
+  // Statcast advanced stats
+  if (fg?.savantStats) {
+    const s = fg.savantStats;
+    if (isPitcher) {
+      doc.xera              = s.xera              ?? undefined;
+      doc.whiffPct          = s.whiffPct          ?? undefined;
+      doc.barrelPctAgainst  = s.barrelPctAgainst  ?? undefined;
+      doc.hardHitPctAgainst = s.hardHitPctAgainst ?? undefined;
+      doc.exitVeloAgainst   = s.exitVeloAgainst   ?? undefined;
+      doc.kPct              = s.kPct              ?? undefined;
+      doc.bbPct             = s.bbPct             ?? undefined;
+    } else {
+      doc.xba         = s.xba         ?? undefined;
+      doc.xslg        = s.xslg        ?? undefined;
+      doc.xwoba       = s.xwoba       ?? undefined;
+      doc.barrelPct   = s.barrelPct   ?? undefined;
+      doc.hardHitPct  = s.hardHitPct  ?? undefined;
+      doc.exitVelo    = s.exitVelo    ?? undefined;
+      doc.kPct        = s.kPct        ?? undefined;
+      doc.bbPct       = s.bbPct       ?? undefined;
+      doc.sprintSpeed = s.sprintSpeed ?? undefined;
     }
   }
 

@@ -94,6 +94,22 @@ export type PlayerLean = {
   prevK?: number;
   prevSV?: number;
   prevIP?: number;
+  /** Baseball Savant Statcast — hitters */
+  xba?: number;
+  xslg?: number;
+  xwoba?: number;
+  barrelPct?: number;
+  hardHitPct?: number;
+  exitVelo?: number;
+  kPct?: number;
+  bbPct?: number;
+  sprintSpeed?: number;
+  /** Baseball Savant Statcast — pitchers */
+  xera?: number;
+  whiffPct?: number;
+  barrelPctAgainst?: number;
+  hardHitPctAgainst?: number;
+  exitVeloAgainst?: number;
 };
 
 function depthModifier(depthRole: string | undefined): number {
