@@ -14,7 +14,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { mockPlayers, mockValuations, Player } from "@/lib/mock-data";
+type Player = {
+  id: string;
+  mlbPlayerId?: number;
+  name: string;
+  mlbTeam?: string;
+  positions: string[];
+};
 
 type DraftPick = {
   _id: string;
@@ -52,7 +58,10 @@ export default function DraftPage() {
 
   // record pick form state
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Player[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [selectedValuation, setSelectedValuation] = useState<number | null>(null);
   const [teamId, setTeamId] = useState("");
   const [price, setPrice] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -117,6 +126,24 @@ export default function DraftPage() {
     fetchLeague();
   }, [leagueId, token]);
 
+  // live player search
+  useEffect(() => {
+    if (!searchQuery.trim() || selectedPlayer) {
+      setSearchResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    setSearchLoading(true);
+    fetch(`/api/valuation/players?q=${encodeURIComponent(searchQuery)}&limit=10`, {
+      signal: controller.signal,
+    })
+      .then((r) => r.json())
+      .then((data) => setSearchResults(data.players ?? []))
+      .catch(() => {})
+      .finally(() => setSearchLoading(false));
+    return () => controller.abort();
+  }, [searchQuery, selectedPlayer]);
+
   // derive drafted player IDs for filtering available players
   const draftedIds = new Set(picks.map((p) => p.playerId));
   const selectedTeamPicks = teamId
@@ -147,11 +174,7 @@ export default function DraftPage() {
   const isSelectedTeamFull =
     teamId !== "" && selectedTeamPickCount >= mainRosterSlots;
 
-  const filteredPlayers = mockPlayers.filter((p) => {
-    if (draftedIds.has(p.id)) return false;
-    if (!searchQuery) return false;
-    return p.name.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  const filteredPlayers = searchResults.filter((p) => !draftedIds.has(p.id));
 
   async function handleRecordPick() {
     if (!selectedPlayer || !teamId || !price) {
@@ -198,6 +221,7 @@ export default function DraftPage() {
       // reset form
       setSelectedPlayer(null);
       setSearchQuery("");
+      setSelectedValuation(null);
       setTeamId("");
       setPrice("");
       await fetchPicks();
@@ -296,51 +320,54 @@ export default function DraftPage() {
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
                     setSelectedPlayer(null);
+                    setSelectedValuation(null);
                   }}
                 />
                 {/* Search results dropdown */}
+                {searchQuery && !selectedPlayer && searchLoading && (
+                  <p className="text-xs text-muted-foreground px-1">Searching...</p>
+                )}
                 {searchQuery &&
                   !selectedPlayer &&
+                  !searchLoading &&
                   filteredPlayers.length > 0 && (
                     <div className="rounded-md border border-border bg-background shadow-sm overflow-hidden">
-                      {filteredPlayers.slice(0, 6).map((p) => {
-                        const val = mockValuations[p.id];
-                        return (
-                          <button
-                            key={p.id}
-                            className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors text-left"
-                            onClick={() => {
-                              setSelectedPlayer(p);
-                              setSearchQuery(p.name);
-                            }}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{p.name}</span>
-                              <span className="text-muted-foreground font-mono text-xs">
-                                {p.mlbTeam}
-                              </span>
-                              {p.positions.map((pos) => (
-                                <Badge
-                                  key={pos}
-                                  variant="outline"
-                                  className="text-xs"
-                                >
-                                  {pos}
-                                </Badge>
-                              ))}
-                            </div>
-                            {val && (
-                              <span className="text-primary font-bold">
-                                ${val.dollarValue}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                      {filteredPlayers.slice(0, 6).map((p) => (
+                        <button
+                          key={p.id}
+                          className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors text-left"
+                          onClick={() => {
+                            setSelectedPlayer(p);
+                            setSearchQuery(p.name);
+                            setSelectedValuation(null);
+                            fetch(`/api/valuation/players/${p.mlbPlayerId ?? p.id}/valuation`)
+                              .then((r) => r.json())
+                              .then((data) => setSelectedValuation(data.valuation?.dollarValue ?? null))
+                              .catch(() => {});
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{p.name}</span>
+                            <span className="text-muted-foreground font-mono text-xs">
+                              {p.mlbTeam}
+                            </span>
+                            {p.positions.map((pos) => (
+                              <Badge
+                                key={pos}
+                                variant="outline"
+                                className="text-xs"
+                              >
+                                {pos}
+                              </Badge>
+                            ))}
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   )}
                 {searchQuery &&
                   !selectedPlayer &&
+                  !searchLoading &&
                   filteredPlayers.length === 0 && (
                     <p className="text-xs text-muted-foreground px-1">
                       No available players match that name.
@@ -366,13 +393,13 @@ export default function DraftPage() {
                       ))}
                     </div>
                   </div>
-                  {mockValuations[selectedPlayer.id] && (
+                  {selectedValuation !== null && (
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground">
                         Est. Value
                       </p>
                       <p className="text-xl font-bold text-primary">
-                        ${mockValuations[selectedPlayer.id].dollarValue}
+                        ${selectedValuation}
                       </p>
                     </div>
                   )}
@@ -534,7 +561,7 @@ export default function DraftPage() {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Players Available</span>
                 <span className="font-bold">
-                  {mockPlayers.length - draftedIds.size}
+                  {1287 - draftedIds.size}
                 </span>
               </div>
             </CardContent>
