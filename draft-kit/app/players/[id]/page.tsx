@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Player, Valuation, HitterStats, PitcherStats } from "@/lib/shared/types";
 import { getEligibleSlots } from "@/lib/shared/eligibility";
@@ -65,6 +65,11 @@ export default function PlayerDetailPage({
   const [price, setPrice] = useState<string>("");
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [activeLeagueId, setActiveLeagueId] = useState<string>("");
+  const [playerNote, setPlayerNote] = useState("");
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteMessage, setNoteMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -111,6 +116,52 @@ export default function PlayerDetailPage({
     }
     fetchLeagues();
   }, [showAssignDialog]);
+
+  useEffect(() => {
+    const storedLeagueId = localStorage.getItem("draftkit_leagueId");
+    if (storedLeagueId) {
+      setActiveLeagueId(storedLeagueId);
+    }
+  }, []);
+
+  useEffect(() => {
+    async function fetchPlayerNote() {
+      if (!activeLeagueId || !id) return;
+  
+      const token = localStorage.getItem("draftkit_token");
+      if (!token) return;
+  
+      try {
+        setNoteLoading(true);
+        setNoteMessage(null);
+  
+        const response = await fetch(
+          `/api/leagues/${activeLeagueId}/player-notes/${id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+  
+        const data = await response.json();
+  
+        if (!response.ok) {
+          setNoteMessage(data.error || "Failed to load player note.");
+          return;
+        }
+  
+        setPlayerNote(data.note ?? "");
+      } catch (e) {
+        console.error("Failed to load player note:", e);
+        setNoteMessage("Failed to load player note.");
+      } finally {
+        setNoteLoading(false);
+      }
+    }
+  
+    fetchPlayerNote();
+  }, [activeLeagueId, id]);
 
   async function handleAssignPlayer() {
     if (!player || !selectedLeague || !teamName.trim() || !position || !price) {
@@ -166,6 +217,97 @@ export default function PlayerDetailPage({
       setAssignLoading(false);
     }
   }
+
+  async function handleSavePlayerNote() {
+    if (!player || !activeLeagueId) {
+      setNoteMessage("No active league selected.");
+      return;
+    }
+  
+    const token = localStorage.getItem("draftkit_token");
+    if (!token) {
+      setNoteMessage("You must be logged in.");
+      return;
+    }
+  
+    try {
+      setNoteSaving(true);
+      setNoteMessage(null);
+  
+      const response = await fetch(
+        `/api/leagues/${activeLeagueId}/player-notes/${id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            playerName: player.name,
+            note: playerNote,
+          }),
+        },
+      );
+  
+      const data = await response.json();
+  
+      if (!response.ok) {
+        setNoteMessage(data.error || "Failed to save player note.");
+        return;
+      }
+  
+      setNoteMessage("Player note saved.");
+    } catch (e) {
+      console.error("Failed to save player note:", e);
+      setNoteMessage("Failed to save player note.");
+    } finally {
+      setNoteSaving(false);
+    }
+  }
+  
+  async function handleDeletePlayerNote() {
+    if (!activeLeagueId) {
+      setNoteMessage("No active league selected.");
+      return;
+    }
+  
+    const token = localStorage.getItem("draftkit_token");
+    if (!token) {
+      setNoteMessage("You must be logged in.");
+      return;
+    }
+  
+    try {
+      setNoteSaving(true);
+      setNoteMessage(null);
+  
+      const response = await fetch(
+        `/api/leagues/${activeLeagueId}/player-notes/${id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+  
+      const data = await response.json();
+  
+      if (!response.ok) {
+        setNoteMessage(data.error || "Failed to delete player note.");
+        return;
+      }
+  
+      setPlayerNote("");
+      setNoteMessage("Player note deleted.");
+    } catch (e) {
+      console.error("Failed to delete player note:", e);
+      setNoteMessage("Failed to delete player note.");
+    } finally {
+      setNoteSaving(false);
+    }
+  }
+
 
   if (loading) {
     return (
@@ -286,6 +428,63 @@ export default function PlayerDetailPage({
             <p className="text-sm text-muted-foreground">
               Valuation not available.
             </p>
+          )}
+        </CardContent>
+      </Card>
+      
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Player Notes</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!activeLeagueId ? (
+            <p className="text-sm text-muted-foreground">
+              Select an active league to save player notes.
+            </p>
+          ) : noteLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading note...
+            </div>
+          ) : (
+            <>
+              <textarea
+                placeholder="Write notes for this player in the current league..."
+                value={playerNote}
+                onChange={(e) => setPlayerNote(e.target.value)}
+                rows={5}
+                className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              />
+
+              {noteMessage && (
+                <p className="text-sm text-muted-foreground">{noteMessage}</p>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleSavePlayerNote}
+                  disabled={noteSaving || !activeLeagueId}
+                >
+                  {noteSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Note"
+                  )}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={handleDeletePlayerNote}
+                  disabled={noteSaving || !activeLeagueId || !playerNote.trim()}
+                >
+                  Delete Note
+                </Button>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
