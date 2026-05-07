@@ -115,6 +115,8 @@ export default function RosterPage() {
 
   function handleLeagueChange(id: string) {
     setSelectedLeagueId(id);
+    localStorage.setItem("draftkit_leagueId", id);
+
     const league = leagues.find((l) => l._id === id);
     if (league) setBudget(league.budget);
     setRoster([]);
