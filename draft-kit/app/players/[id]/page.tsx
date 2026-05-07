@@ -51,6 +51,9 @@ export default function PlayerDetailPage({
 }) {
   const { id } = use(params);
 
+  const isCustomPlayer = id.startsWith("custom_");
+  const customPlayerId = isCustomPlayer ? id.replace(/^custom_/, "") : "";
+
   const [player, setPlayer] = useState<Player | null>(null);
   const [valuation, setValuation] = useState<Valuation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,10 +79,42 @@ export default function PlayerDetailPage({
       try {
         setLoading(true);
         setError(null);
+  
+        if (isCustomPlayer) {
+          const token = localStorage.getItem("draftkit_token");
+          const leagueId = localStorage.getItem("draftkit_leagueId");
+  
+          if (!token || !leagueId) {
+            setError("Missing active league or login session.");
+            return;
+          }
+  
+          const response = await fetch(
+            `/api/leagues/${leagueId}/custom-players/${customPlayerId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            },
+          );
+  
+          const data = await response.json();
+  
+          if (!response.ok) {
+            setError(data.error || "Failed to load player.");
+            return;
+          }
+  
+          setPlayer(data.player);
+          setValuation(null);
+          return;
+        }
+  
         const [playerRes, valuationRes] = await Promise.all([
           apiClient.getPlayer(id),
           apiClient.getValuation(id),
         ]);
+  
         setPlayer(playerRes.player);
         setValuation(valuationRes.valuation);
       } catch (e) {
@@ -89,8 +124,9 @@ export default function PlayerDetailPage({
         setLoading(false);
       }
     }
+  
     fetchData();
-  }, [id]);
+  }, [id, isCustomPlayer, customPlayerId]);
 
   useEffect(() => {
     async function fetchLeagues() {
@@ -343,10 +379,19 @@ export default function PlayerDetailPage({
 
       {/* Player Header */}
       <div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-3xl font-bold text-foreground">{player.name}</h1>
+
+          {isCustomPlayer ? (
+            <Badge variant="outline" className="text-xs">
+              Custom
+            </Badge>
+          ) : null}
+
           {player.age != null && (
-            <span className="text-lg text-muted-foreground font-medium">Age {player.age}</span>
+            <span className="text-lg text-muted-foreground font-medium">
+              Age {player.age}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -404,7 +449,12 @@ export default function PlayerDetailPage({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {valuation ? (
+          {isCustomPlayer ? (
+            <p className="text-sm text-muted-foreground">
+              Custom players do not have Player API valuations, but can still be used
+              for notes, drafting, and roster management.
+            </p>
+          ) : valuation ? (
             <>
               <div className="flex items-end gap-2">
                 <span className="text-5xl font-bold text-primary">
