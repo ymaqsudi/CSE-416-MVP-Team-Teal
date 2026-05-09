@@ -469,6 +469,23 @@ export default function DraftPage() {
                 </div>
               ) : null}
 
+              {selectedPlayer &&
+                selectedValuation !== null &&
+                price !== "" &&
+                Number(price) > selectedValuation && (
+                  <div className="rounded-md border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-600 px-4 py-3 flex items-start gap-2">
+                    <span className="text-yellow-600 dark:text-yellow-400 text-base leading-none mt-0.5">⚠</span>
+                    <div>
+                      <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">
+                        Overpay Warning
+                      </p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+                        ${Number(price)} exceeds the estimated value of ${selectedValuation} for {selectedPlayer.name}.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
               {submitError && (
                 <p className="text-xs text-destructive">{submitError}</p>
               )}
