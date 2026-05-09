@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League } from "@/lib/models/League";
+import { DraftPick } from "@/lib/models/DraftPick";
 
 export const dynamic = "force-dynamic";
 
@@ -68,9 +69,15 @@ export async function GET(
       return noStoreJson({ error: "League not found" }, 404);
     }
 
-    const picks = [...(league.draftPicks ?? [])].sort(
-      (a, b) => a.pickNumber - b.pickNumber,
-    );
+    const rawPicks = await DraftPick.find({ leagueId: id })
+      .sort({ pickNumber: 1 })
+      .lean();
+    const teamCount = league.teamCount;
+    const picks = rawPicks.map((p) => ({
+      ...p,
+      _id: String(p._id),
+      round: Math.floor((p.pickNumber - 1) / teamCount) + 1,
+    }));
 
     return noStoreJson(
       {
