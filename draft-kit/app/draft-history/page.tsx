@@ -315,8 +315,8 @@ export default function DraftHistoryPage() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
+        <div className="space-y-3 lg:col-span-1">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -347,30 +347,29 @@ export default function DraftHistoryPage() {
               </p>
             </CardContent>
           </Card>
+          {Object.keys(stats.byTeam).length > 0 ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Spent by team</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                {Object.entries(stats.byTeam)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([name, spent]) => (
+                    <Badge
+                      key={name}
+                      variant="outline"
+                      className="text-xs font-normal py-1 px-2 border-primary/20"
+                    >
+                      {name}: <span className="font-semibold ml-1">${spent}</span>
+                    </Badge>
+                  ))}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
 
-        {Object.keys(stats.byTeam).length > 0 ? (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Spend by team</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {Object.entries(stats.byTeam)
-                .sort((a, b) => b[1] - a[1])
-                .map(([name, spent]) => (
-                  <Badge
-                    key={name}
-                    variant="outline"
-                    className="text-xs font-normal py-1 px-2 border-primary/20"
-                  >
-                    {name}: <span className="font-semibold ml-1">${spent}</span>
-                  </Badge>
-                ))}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <CardTitle>Full log</CardTitle>
@@ -385,7 +384,7 @@ export default function DraftHistoryPage() {
               className="max-w-xs"
             />
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent className="max-h-[calc(100vh_-_24rem)] overflow-x-auto overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
