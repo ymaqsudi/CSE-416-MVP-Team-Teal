@@ -1,18 +1,5 @@
 import mongoose, { Schema, Model, Document, Types } from "mongoose";
 
-export interface IDraftPick {
-  pickNumber: number;
-  round: number;
-  teamId?: string;
-  teamName: string;
-  playerId: string;
-  playerName: string;
-  mlbTeam: string;
-  positions: string[];
-  price: number;
-  createdAt?: Date;
-}
-
 export interface ITeam {
   id: string;
   name: string;
@@ -28,7 +15,6 @@ export interface ILeague extends Document {
   categories: string[];
   teams: ITeam[];
   myTeamId: string;
-  draftPicks: IDraftPick[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,21 +25,6 @@ const TeamSchema = new Schema<ITeam>(
     name: { type: String, required: true, trim: true },
   },
   { _id: false }
-);
-
-const DraftPickSchema = new Schema<IDraftPick>(
-  {
-    pickNumber: { type: Number, required: true, min: 1 },
-    round: { type: Number, required: true, min: 1 },
-    teamId: { type: String, default: "", trim: true },
-    teamName: { type: String, required: true, trim: true },
-    playerId: { type: String, required: true, trim: true },
-    playerName: { type: String, required: true, trim: true },
-    mlbTeam: { type: String, default: "", trim: true },
-    positions: { type: [String], default: [] },
-    price: { type: Number, required: true, min: 0 },
-  },
-  { timestamps: true }
 );
 
 const LeagueSchema = new Schema<ILeague>(
@@ -102,10 +73,6 @@ const LeagueSchema = new Schema<ILeague>(
     myTeamId: {
       type: String,
       default: "",
-    },
-    draftPicks: {
-      type: [DraftPickSchema],
-      default: [],
     },
   },
   {

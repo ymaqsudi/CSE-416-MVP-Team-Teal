@@ -86,9 +86,10 @@ export async function getPlayers(req: Request, res: Response): Promise<void> {
     let query: Record<string, unknown> = {};
 
     if (typeof q === "string" && q.trim()) {
+      const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       query.$or = [
-        { name: { $regex: q.trim(), $options: "i" } },
-        { mlbTeam: { $regex: q.trim(), $options: "i" } },
+        { name: { $regex: escaped, $options: "i" } },
+        { mlbTeam: { $regex: escaped, $options: "i" } },
       ];
     }
     if (typeof position === "string" && position.trim()) {
