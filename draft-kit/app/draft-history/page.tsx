@@ -56,6 +56,8 @@ type SortKey = "pickNumber" | "round" | "price" | "teamName" | "playerName" | "c
 
 const LEAGUE_STORAGE_KEY = "draftkit_leagueId";
 
+const ALL_POSITIONS = ["C", "1B", "2B", "3B", "SS", "OF", "MI", "CI", "U", "P"];
+
 function formatWhen(iso?: string) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -77,6 +79,10 @@ export default function DraftHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState<string>("all");
+  const [positionFilter, setPositionFilter] = useState<string>("all");
+  const [minPrice, setMinPrice] = useState<string>("");
+  const [maxPrice, setMaxPrice] = useState<string>("");
   const [sortKey, setSortKey] = useState<SortKey>("pickNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingPick, setEditingPick] = useState<DraftPickRow | null>(null);
@@ -167,6 +173,16 @@ export default function DraftHistoryPage() {
     boot();
   }, [token, refreshHistory]);
 
+  const positionOptions = useMemo(() => {
+    const set = new Set<string>(ALL_POSITIONS);
+    for (const p of picks) {
+      for (const pos of p.positions ?? []) {
+        if (pos) set.add(pos);
+      }
+    }
+    return Array.from(set).sort();
+  }, [picks]);
+
   const filteredPicks = useMemo(() => {
     const q = filter.trim().toLowerCase();
     let rows = picks;
@@ -177,6 +193,22 @@ export default function DraftHistoryPage() {
           p.teamName.toLowerCase().includes(q) ||
           (p.mlbTeam ?? "").toLowerCase().includes(q),
       );
+    }
+    if (teamFilter !== "all") {
+      rows = rows.filter((p) =>
+        p.teamId ? p.teamId === teamFilter : p.teamName === teamFilter,
+      );
+    }
+    if (positionFilter !== "all") {
+      rows = rows.filter((p) => (p.positions ?? []).includes(positionFilter));
+    }
+    const minNum = minPrice.trim() === "" ? null : Number(minPrice);
+    const maxNum = maxPrice.trim() === "" ? null : Number(maxPrice);
+    if (minNum !== null && !Number.isNaN(minNum)) {
+      rows = rows.filter((p) => p.price >= minNum);
+    }
+    if (maxNum !== null && !Number.isNaN(maxNum)) {
+      rows = rows.filter((p) => p.price <= maxNum);
     }
     const dir = sortDir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
@@ -194,7 +226,7 @@ export default function DraftHistoryPage() {
         sensitivity: "base",
       }) * dir;
     });
-  }, [picks, filter, sortKey, sortDir]);
+  }, [picks, filter, teamFilter, positionFilter, minPrice, maxPrice, sortKey, sortDir]);
 
   const stats = useMemo(() => {
     const total = picks.reduce((s, p) => s + p.price, 0);
@@ -448,19 +480,94 @@ export default function DraftHistoryPage() {
         </div>
 
         <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <CardTitle>Full log</CardTitle>
-              <CardDescription className="mt-1">
-                Sort columns, search by player or team. Pick # and round update automatically.
-              </CardDescription>
+          <CardHeader className="gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle>Full log</CardTitle>
+                <CardDescription className="mt-1">
+                  Sort columns, search by player or team. Pick # and round update automatically.
+                </CardDescription>
+              </div>
+              <Input
+                placeholder="Filter…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="max-w-xs"
+              />
             </div>
-            <Input
-              placeholder="Filter…"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="max-w-xs"
-            />
+            <div className="flex flex-wrap items-end gap-2 pt-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted-foreground">Team</label>
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={teamFilter}
+                  onChange={(e) => setTeamFilter(e.target.value)}
+                >
+                  <option value="all">All teams</option>
+                  {(league?.teams ?? []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted-foreground">Position</label>
+                <select
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={positionFilter}
+                  onChange={(e) => setPositionFilter(e.target.value)}
+                >
+                  <option value="all">All positions</option>
+                  {positionOptions.map((pos) => (
+                    <option key={pos} value={pos}>
+                      {pos}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted-foreground">Min $</label>
+                <Input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
+                  className="w-24"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted-foreground">Max $</label>
+                <Input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  placeholder="∞"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                  className="w-24"
+                />
+              </div>
+              {(teamFilter !== "all" ||
+                positionFilter !== "all" ||
+                minPrice !== "" ||
+                maxPrice !== "") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setTeamFilter("all");
+                    setPositionFilter("all");
+                    setMinPrice("");
+                    setMaxPrice("");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="max-h-[calc(100vh_-_24rem)] overflow-x-auto overflow-y-auto">
             <Table>
