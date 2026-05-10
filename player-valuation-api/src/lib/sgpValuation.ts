@@ -112,23 +112,6 @@ export type PlayerLean = {
   exitVeloAgainst?: number;
 };
 
-function depthModifier(depthRole: string | undefined): number {
-  switch (depthRole) {
-    case "Starter":
-      return 1.0;
-    case "Platoon":
-      return 0.6;
-    case "Bench":
-      return 0.3;
-    case "Backup":
-      return 0.75;
-    case "Minors":
-      return 0.3;
-    default:
-      return 1.0;
-  }
-}
-
 function isPitcher(p: PlayerLean): boolean {
   return p.positions.includes("P");
 }
@@ -138,15 +121,18 @@ function availability(p: PlayerLean): number {
   return Math.min(1, Math.max(0, g / 162));
 }
 
-/** Total SGP for the player (hitter or pitcher categories only). */
+/**
+ * Total SGP for the player (hitter or pitcher categories only).
+ * Note: depth/role is intentionally NOT applied here — projections already reflect role.
+ * Applying depthModifier on top double-counts the haircut.
+ */
 export function computePlayerSGP(p: PlayerLean): number {
   const avail = availability(p);
-  const dmod = depthModifier(p.depthRole);
 
   if (isPitcher(p)) {
-    const w = (p.projW ?? 0) * avail * dmod;
-    const k = (p.projK ?? 0) * avail * dmod;
-    const sv = (p.projSV ?? 0) * avail * dmod;
+    const w = (p.projW ?? 0) * avail;
+    const k = (p.projK ?? 0) * avail;
+    const sv = (p.projSV ?? 0) * avail;
     const era = p.projERA ?? LEAGUE_AVG_ERA;
     const whip = p.projWHIP ?? LEAGUE_AVG_WHIP;
     const sgpW = w / DENOM.W;
@@ -157,10 +143,10 @@ export function computePlayerSGP(p: PlayerLean): number {
     return Math.max(0, sgpW + sgpK + sgpSV + sgpERA + sgpWHIP);
   }
 
-  const hr = (p.projHR ?? 0) * avail * dmod;
-  const rbi = (p.projRBI ?? 0) * avail * dmod;
-  const r = (p.projR ?? 0) * avail * dmod;
-  const sb = (p.projSB ?? 0) * avail * dmod;
+  const hr = (p.projHR ?? 0) * avail;
+  const rbi = (p.projRBI ?? 0) * avail;
+  const r = (p.projR ?? 0) * avail;
+  const sb = (p.projSB ?? 0) * avail;
   const avg = p.projAVG ?? LEAGUE_AVG_BA;
   const sgpHR = hr / DENOM.HR;
   const sgpRBI = rbi / DENOM.RBI;
@@ -235,24 +221,34 @@ function replacementSGPAtPosition(
   return computePlayerSGP(ranked[idx]);
 }
 
-function sgpAboveReplacement(player: PlayerLean, pool: PlayerLean[], league: LeagueConfig): number {
+function sgpAboveReplacement(
+  player: PlayerLean,
+  pool: PlayerLean[],
+  league: LeagueConfig
+): { above: number; bestPosition?: string } {
   const slots = rosterSlots(league);
   const { numTeams } = league;
   const sgp = computePlayerSGP(player);
   let best = 0;
+  let bestPosition: string | undefined;
   for (const pos of player.positions) {
     const slotCount = slots[pos];
     if (slotCount === undefined) continue;
     const rep = replacementSGPAtPosition(pool, pos, numTeams, slotCount);
-    best = Math.max(best, sgp - rep);
+    const sar = sgp - rep;
+    if (sar > best) {
+      best = sar;
+      bestPosition = pos;
+    }
   }
-  return Math.max(0, best);
+  return { above: Math.max(0, best), bestPosition };
 }
 
 export type ValuationBreakdown = {
   dollarValue: number;
   explanation: string;
   sgpAboveRep: number;
+  bestPosition?: string;
   riskFlag?: string;
 };
 
@@ -269,23 +265,31 @@ export function valuePool(
 ): Map<string, ValuationBreakdown> {
   const byId = new Map<string, ValuationBreakdown>();
   let sumAbove = 0;
-  const sgpList: { id: string; above: number; p: PlayerLean }[] = [];
+  const sgpList: {
+    id: string;
+    above: number;
+    bestPosition?: string;
+    p: PlayerLean;
+  }[] = [];
 
   for (const p of undrafted) {
     if (p.isEligible === false) continue;
     const id = String(p._id);
-    const above = sgpAboveReplacement(p, undrafted, league);
-    sgpList.push({ id, above, p });
+    const { above, bestPosition } = sgpAboveReplacement(p, undrafted, league);
+    sgpList.push({ id, above, bestPosition, p });
     sumAbove += above;
   }
 
-  for (const { id, above, p } of sgpList) {
-    let dollarValue: number;
-    if (sumAbove <= 0) {
-      dollarValue = 1;
-    } else {
-      dollarValue = Math.max(1, Math.round((above / sumAbove) * remainingDollars + 1));
-    }
+  // $1/player floor is reserved up front so the proportional split distributes
+  // only the leftover dollars. This keeps Σ(values) ≈ remainingDollars instead
+  // of overshooting by ~N (the previous `+ 1` inside Math.round).
+  const minDollarsReserved = sgpList.length;
+  const distributable = Math.max(0, remainingDollars - minDollarsReserved);
+
+  for (const { id, above, bestPosition, p } of sgpList) {
+    const share = sumAbove > 0 ? (above / sumAbove) * distributable : 0;
+    const dollarValue = Math.max(1, Math.round(1 + share));
+
     const parts: string[] = [];
     if (above > 0) parts.push("SGP above replacement");
     else parts.push("At or below replacement");
@@ -296,6 +300,7 @@ export function valuePool(
       dollarValue,
       explanation: parts.join("; ") + ".",
       sgpAboveRep: Math.round(above * 100) / 100,
+      bestPosition,
       riskFlag: riskNote(p),
     });
   }
