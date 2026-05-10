@@ -86,6 +86,7 @@ export async function GET(
           leagueName: league.leagueName,
           teamCount: league.teamCount,
           budget: league.budget,
+          mainRosterSlots: league.mainRosterSlots,
           scoringType: league.scoringType,
           teams: league.teams ?? [],
           myTeamId: league.myTeamId ?? "",

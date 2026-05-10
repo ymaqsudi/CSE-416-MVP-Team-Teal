@@ -15,7 +15,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, History, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, History, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Team = { id: string; name: string };
 
@@ -24,6 +32,7 @@ type LeagueMeta = {
   leagueName: string;
   teamCount: number;
   budget: number;
+  mainRosterSlots?: number;
   scoringType: string;
   teams?: Team[];
   myTeamId?: string;
@@ -70,6 +79,11 @@ export default function DraftHistoryPage() {
   const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("pickNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [editingPick, setEditingPick] = useState<DraftPickRow | null>(null);
+  const [editTeamId, setEditTeamId] = useState<string>("");
+  const [editPrice, setEditPrice] = useState<string>("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const refreshHistory = useCallback(async (auth: string, lid: string) => {
     const res = await fetch(`/api/leagues/${lid}/draft-history`, {
@@ -190,6 +204,70 @@ export default function DraftHistoryPage() {
     }, {});
     return { total, byTeam, count: picks.length };
   }, [picks]);
+
+  function openEdit(row: DraftPickRow) {
+    setEditingPick(row);
+    setEditTeamId(row.teamId ?? "");
+    setEditPrice(String(row.price));
+    setEditError(null);
+  }
+
+  async function saveEdit() {
+    if (!token || !leagueId || !editingPick?._id) return;
+    setEditSaving(true);
+    setEditError(null);
+
+    const body: { teamId?: string; price?: number } = {};
+    if (editTeamId && editTeamId !== editingPick.teamId) body.teamId = editTeamId;
+    const priceNum = Number(editPrice);
+    if (!Number.isNaN(priceNum) && priceNum !== editingPick.price) {
+      body.price = priceNum;
+    }
+
+    if (Object.keys(body).length === 0) {
+      setEditingPick(null);
+      setEditSaving(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `/api/leagues/${leagueId}/picks/${editingPick._id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setEditError((data as { error?: string }).error || "Failed to update pick.");
+        return;
+      }
+      setEditingPick(null);
+      await refreshHistory(token, leagueId);
+    } catch {
+      setEditError("Network error. Try again.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  const editMaxBid = useMemo(() => {
+    if (!editingPick || !league || !editTeamId) return null;
+    const slots = Number(league.mainRosterSlots) || 23;
+    const teamPicks = picks.filter(
+      (p) => p.teamId === editTeamId && p._id !== editingPick._id,
+    );
+    const count = teamPicks.length;
+    if (count >= slots) return 0;
+    const spent = teamPicks.reduce((s, p) => s + Number(p.price || 0), 0);
+    const remaining = Math.max(slots - count, 1);
+    return Math.max(Number(league.budget) - spent - (remaining - 1), 0);
+  }, [editingPick, editTeamId, league, picks]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -443,12 +521,13 @@ export default function DraftHistoryPage() {
                       When <SortIcon k="createdAt" />
                     </button>
                   </TableHead>
+                  <TableHead className="w-16" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredPicks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                       {picks.length === 0
                         ? "No picks yet — record auction picks on the live draft page."
                         : "No rows match your filter."}
@@ -490,6 +569,16 @@ export default function DraftHistoryPage() {
                       <TableCell className="hidden md:table-cell text-muted-foreground text-sm font-mono">
                         {formatWhen(row.createdAt)}
                       </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEdit(row)}
+                          aria-label="Edit pick"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -498,6 +587,66 @@ export default function DraftHistoryPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog
+        open={!!editingPick}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEditingPick(null);
+            setEditError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit pick #{editingPick?.pickNumber}</DialogTitle>
+            <DialogDescription>{editingPick?.playerName}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <label className="block text-sm font-medium">Team</label>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={editTeamId}
+              onChange={(e) => setEditTeamId(e.target.value)}
+              disabled={editSaving}
+            >
+              {(league?.teams ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <label className="block text-sm font-medium">Price</label>
+            <Input
+              type="number"
+              min={1}
+              value={editPrice}
+              onChange={(e) => setEditPrice(e.target.value)}
+              disabled={editSaving}
+            />
+            {editMaxBid !== null ? (
+              <p className="text-xs text-muted-foreground">
+                Max allowed for this team: ${editMaxBid}
+              </p>
+            ) : null}
+            {editError ? (
+              <p className="text-sm text-red-700">{editError}</p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditingPick(null)}
+              disabled={editSaving}
+            >
+              Cancel
+            </Button>
+            <Button onClick={saveEdit} disabled={editSaving}>
+              {editSaving ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Separator className="opacity-50" />
       <p className="text-xs text-muted-foreground text-center">
