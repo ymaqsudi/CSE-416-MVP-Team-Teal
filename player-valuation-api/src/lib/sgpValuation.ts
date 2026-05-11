@@ -186,6 +186,53 @@ function availability(p: PlayerLean): number {
 }
 
 /**
+ * Weight given to Baseball Savant xStats when blending against the projection's rate stat.
+ * Projections already incorporate Statcast signal upstream, but they're often slow to react
+ * to in-season process changes. A 30% pull toward xba/xera regresses noisy outcomes toward
+ * underlying contact quality without overriding the projection.
+ */
+const STATCAST_BLEND = 0.3;
+
+function blendRate(projection: number | undefined, xStat: number | undefined, fallback: number): number {
+  const base = projection ?? fallback;
+  if (xStat == null || !Number.isFinite(xStat)) return base;
+  return (1 - STATCAST_BLEND) * base + STATCAST_BLEND * xStat;
+}
+
+/**
+ * Expected-value haircut for risk. Replaces the old binary `risk === "High"` flag with a
+ * continuous multiplier in [0.4, 1.0] combining injury status, risk tier, and age decline.
+ * Returns 1.0 when no risk signals are present so the math is unchanged for the common case.
+ */
+export function riskMultiplier(p: PlayerLean): number {
+  let mult = 1;
+
+  // Injury status — most severe first.
+  const status = p.injuryStatus?.toLowerCase() ?? "";
+  if (status.includes("60") || status.includes("out for season") || status.includes("season-ending")) {
+    mult *= 0.4;
+  } else if (status.includes("15-day") || status.includes("10-day") || status.includes("il")) {
+    mult *= 0.85;
+  } else if (status.includes("dtd") || status.includes("day-to-day")) {
+    mult *= 0.95;
+  }
+
+  // Risk tier from the data source.
+  if (p.risk === "High") mult *= 0.9;
+  else if (p.risk === "Med") mult *= 0.97;
+
+  // Age decline: hitters fade after ~32, pitchers a year earlier; cap haircut at 30%.
+  if (p.age != null && Number.isFinite(p.age)) {
+    const declineStart = isPitcher(p) ? 31 : 32;
+    if (p.age > declineStart) {
+      mult *= Math.max(0.7, 1 - (p.age - declineStart) * 0.02);
+    }
+  }
+
+  return mult;
+}
+
+/**
  * Total SGP for the player (hitter or pitcher categories only).
  * Note: depth/role is intentionally NOT applied here — projections already reflect role.
  * Applying depthModifier on top double-counts the haircut.
@@ -194,31 +241,34 @@ export function computePlayerSGP(p: PlayerLean, numTeams = 12): number {
   const denom = getDenominators(numTeams);
   const avail = availability(p);
 
+  let raw: number;
   if (isPitcher(p)) {
     const w = (p.projW ?? 0) * avail;
     const k = (p.projK ?? 0) * avail;
     const sv = (p.projSV ?? 0) * avail;
-    const era = p.projERA ?? LEAGUE_AVG_ERA;
+    const era = blendRate(p.projERA, p.xera, LEAGUE_AVG_ERA);
     const whip = p.projWHIP ?? LEAGUE_AVG_WHIP;
     const sgpW = w / denom.W;
     const sgpK = k / denom.K;
     const sgpSV = sv / denom.SV;
     const sgpERA = (LEAGUE_AVG_ERA - era) / denom.ERA;
     const sgpWHIP = (LEAGUE_AVG_WHIP - whip) / denom.WHIP;
-    return Math.max(0, sgpW + sgpK + sgpSV + sgpERA + sgpWHIP);
+    raw = Math.max(0, sgpW + sgpK + sgpSV + sgpERA + sgpWHIP);
+  } else {
+    const hr = (p.projHR ?? 0) * avail;
+    const rbi = (p.projRBI ?? 0) * avail;
+    const r = (p.projR ?? 0) * avail;
+    const sb = (p.projSB ?? 0) * avail;
+    const avg = blendRate(p.projAVG, p.xba, LEAGUE_AVG_BA);
+    const sgpHR = hr / denom.HR;
+    const sgpRBI = rbi / denom.RBI;
+    const sgpR = r / denom.R;
+    const sgpSB = sb / denom.SB;
+    const sgpAVG = (avg - LEAGUE_AVG_BA) / denom.AVG;
+    raw = Math.max(0, sgpHR + sgpRBI + sgpR + sgpSB + sgpAVG);
   }
 
-  const hr = (p.projHR ?? 0) * avail;
-  const rbi = (p.projRBI ?? 0) * avail;
-  const r = (p.projR ?? 0) * avail;
-  const sb = (p.projSB ?? 0) * avail;
-  const avg = p.projAVG ?? LEAGUE_AVG_BA;
-  const sgpHR = hr / denom.HR;
-  const sgpRBI = rbi / denom.RBI;
-  const sgpR = r / denom.R;
-  const sgpSB = sb / denom.SB;
-  const sgpAVG = (avg - LEAGUE_AVG_BA) / denom.AVG;
-  return Math.max(0, sgpHR + sgpRBI + sgpR + sgpSB + sgpAVG);
+  return raw * riskMultiplier(p);
 }
 
 function rosterSlots(league: LeagueConfig): Record<string, number> {
@@ -322,88 +372,154 @@ export type ValuationBreakdown = {
   sgpAboveRep: number;
   bestPosition?: string;
   riskFlag?: string;
+  /** EV haircut applied to SGP (1.0 = no risk discount). Diagnostic. */
+  riskMultiplier?: number;
+  /** Active inflation factor for this valuation (1.0 = on par). Diagnostic. */
+  inflationFactor?: number;
 };
 
 function riskNote(p: PlayerLean): string | undefined {
-  if (availability(p) < 0.8) return "Availability below 80% of season.";
-  if (p.risk === "High") return "Elevated injury/performance risk.";
+  const mult = riskMultiplier(p);
+  if (mult < 0.95) {
+    if (p.injuryStatus) return `Injury status: ${p.injuryStatus}.`;
+    if (p.risk === "High") return "Elevated injury/performance risk.";
+    if (p.age != null && p.age > (isPitcher(p) ? 31 : 32)) {
+      return `Age decline (${p.age}) factored in.`;
+    }
+    return "Risk haircut applied.";
+  }
+  if (availability(p) < 0.8) return "Availability below 80% of full workload.";
   return undefined;
 }
 
-export function valuePool(
-  undrafted: PlayerLean[],
+type ParEntry = {
+  p: PlayerLean;
+  sgp: number;
+  above: number;
+  bestPosition?: string;
+  par: number;
+};
+
+/**
+ * Compute par values (proportional to SGP-above-replacement) for a pool against a fixed
+ * dollar budget. Pure function of the pool and budget — no inflation, no rounding to $.
+ *
+ * Used both for live valuation (pool = undrafted, budget = remaining) and as the base
+ * for static-par + inflation-factor scaling (pool = full eligible, budget = initial).
+ */
+function computeParValues(
+  pool: PlayerLean[],
   league: LeagueConfig,
-  remainingDollars: number
-): Map<string, ValuationBreakdown> {
-  const byId = new Map<string, ValuationBreakdown>();
+  budget: number,
+): Map<string, ParEntry> {
   const slots = rosterSlots(league);
   const { numTeams } = league;
+  const eligible = pool.filter((p) => p.isEligible !== false);
 
-  // ---- Pass 1: assign each eligible player to a single preferred position. ----
-  // Multi-position players were previously double-counted in every replacement
-  // pool they qualified for, depressing replacement SGP and inflating $ values.
-  // Greedy single-assignment partitions the pool so each player contributes to
-  // exactly one position's replacement tier.
-  const eligiblePlayers = undrafted.filter((p) => p.isEligible !== false);
-  const assignments = new Map<
-    string,
-    { p: PlayerLean; sgp: number; bestPosition?: string }
-  >();
-  const partitionedPool: Record<string, PlayerLean[]> = {};
-
-  for (const p of eligiblePlayers) {
-    const { bestPosition, sgp } = preferredAssignment(p, eligiblePlayers, league);
+  // Pass 1: greedy single-position assignment.
+  const assignments = new Map<string, { p: PlayerLean; sgp: number; bestPosition?: string }>();
+  const partitioned: Record<string, PlayerLean[]> = {};
+  for (const p of eligible) {
+    const { bestPosition, sgp } = preferredAssignment(p, eligible, league);
     assignments.set(String(p._id), { p, sgp, bestPosition });
-    if (bestPosition) {
-      (partitionedPool[bestPosition] ??= []).push(p);
-    }
+    if (bestPosition) (partitioned[bestPosition] ??= []).push(p);
   }
 
-  // ---- Pass 2: replacement SGP per position from the partitioned pool. ----
+  // Pass 2: replacement per position from the partitioned pool.
   const replacementByPos = new Map<string, number>();
   for (const [pos, slotCount] of Object.entries(slots)) {
-    const pool = partitionedPool[pos] ?? [];
-    replacementByPos.set(pos, replacementSGPFromPool(pool, numTeams, slotCount));
+    replacementByPos.set(
+      pos,
+      replacementSGPFromPool(partitioned[pos] ?? [], numTeams, slotCount),
+    );
   }
 
-  // ---- Pass 3: SAR + dollar split. ----
-  const sgpList: {
-    id: string;
-    above: number;
-    bestPosition?: string;
-    p: PlayerLean;
-  }[] = [];
+  // Pass 3: SAR.
+  const result = new Map<string, ParEntry>();
   let sumAbove = 0;
-
   for (const [id, { p, sgp, bestPosition }] of assignments) {
     const rep = bestPosition ? (replacementByPos.get(bestPosition) ?? 0) : 0;
     const above = Math.max(0, sgp - rep);
-    sgpList.push({ id, above, bestPosition, p });
     sumAbove += above;
+    result.set(id, { p, sgp, above, bestPosition, par: 0 });
   }
 
-  // $1/player floor is reserved up front so the proportional split distributes
-  // only the leftover dollars. This keeps Σ(values) ≈ remainingDollars instead
-  // of overshooting by ~N (the previous `+ 1` inside Math.round).
-  const minDollarsReserved = sgpList.length;
-  const distributable = Math.max(0, remainingDollars - minDollarsReserved);
+  // Pass 4: par dollars. $1/player floor reserved; remainder split by SAR share.
+  const floor = result.size;
+  const distributable = Math.max(0, budget - floor);
+  for (const entry of result.values()) {
+    const share = sumAbove > 0 ? (entry.above / sumAbove) * distributable : 0;
+    entry.par = 1 + share;
+  }
 
-  for (const { id, above, bestPosition, p } of sgpList) {
-    const share = sumAbove > 0 ? (above / sumAbove) * distributable : 0;
-    const dollarValue = Math.max(1, Math.round(1 + share));
+  return result;
+}
+
+/**
+ * Convert par valuations to dollar values for the undrafted pool.
+ *
+ * If `options.fullPool` is provided AND larger than `undrafted` (i.e. some picks have
+ * happened), par is computed *once* against the FULL eligible pool and the INITIAL budget
+ * (see Phase 3.3 of the valuation rewrite). The undrafted players' static par values are
+ * then scaled by an inflation factor `remainingDollars / Σ(par_undrafted)` — the standard
+ * rotisserie auction adjustment for hot/cold price runs.
+ *
+ * If `fullPool` is omitted (or equals undrafted), par is computed dynamically against the
+ * undrafted pool with the remaining-dollar budget — equivalent to the pre-Phase-3 behavior.
+ */
+export function valuePool(
+  undrafted: PlayerLean[],
+  league: LeagueConfig,
+  remainingDollars: number,
+  options?: { fullPool?: PlayerLean[] },
+): Map<string, ValuationBreakdown> {
+  const byId = new Map<string, ValuationBreakdown>();
+  const fullPool = options?.fullPool;
+  const useStaticPar = fullPool != null && fullPool.length > undrafted.length;
+
+  let parMap: Map<string, ParEntry>;
+  let inflation: number;
+
+  if (useStaticPar) {
+    parMap = computeParValues(fullPool, league, totalAuctionBudget(league));
+    let parUndraftedSum = 0;
+    for (const p of undrafted) {
+      const entry = parMap.get(String(p._id));
+      if (entry) parUndraftedSum += entry.par;
+    }
+    inflation = parUndraftedSum > 0 ? remainingDollars / parUndraftedSum : 1;
+  } else {
+    parMap = computeParValues(undrafted, league, remainingDollars);
+    inflation = 1;
+  }
+
+  for (const p of undrafted) {
+    if (p.isEligible === false) continue;
+    const id = String(p._id);
+    const entry = parMap.get(id);
+    if (!entry) continue;
+
+    const dollarValue = Math.max(1, Math.round(entry.par * inflation));
 
     const parts: string[] = [];
-    if (above > 0) parts.push("SGP above replacement");
+    if (entry.above > 0) parts.push("SGP above replacement");
     else parts.push("At or below replacement");
-    if (p.depthRole === "Starter") parts.push("starting role");
-    if (riskNote(p)) parts.push(riskNote(p)!);
+    if (entry.p.depthRole === "Starter") parts.push("starting role");
+    const note = riskNote(entry.p);
+    if (note) parts.push(note);
+    if (useStaticPar && Math.abs(inflation - 1) > 0.05) {
+      parts.push(`Inflation ${(inflation * 100).toFixed(0)}%`);
+    }
 
+    const mult = riskMultiplier(entry.p);
     byId.set(id, {
       dollarValue,
       explanation: parts.join("; ") + ".",
-      sgpAboveRep: Math.round(above * 100) / 100,
-      bestPosition,
-      riskFlag: riskNote(p),
+      sgpAboveRep: Math.round(entry.above * 100) / 100,
+      bestPosition: entry.bestPosition,
+      riskFlag: note,
+      riskMultiplier: mult < 1 ? Math.round(mult * 1000) / 1000 : undefined,
+      inflationFactor: useStaticPar ? Math.round(inflation * 1000) / 1000 : undefined,
     });
   }
 
