@@ -1,7 +1,6 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import fs from "fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
@@ -10,6 +9,7 @@ import mongoose from "mongoose";
 import { PlayerModel } from "../models/Player.js";
 import { TransactionModel } from "../models/Transaction.js";
 import { SessionModel } from "../models/Session.js";
+import { fetchProjections, type FgPlayer } from "./fetchProjections.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,21 +19,6 @@ type InjuryStatusValue =
   | "Active" | "Day-to-Day"
   | "10-Day IL" | "15-Day IL" | "60-Day IL"
   | "Out for Season" | "Suspended";
-
-interface FgStats { [key: string]: number | null | undefined }
-
-interface FgPlayer {
-  name: string;
-  mlbamId: number;
-  isPitcher: boolean;
-  projStats: FgStats | null;
-  prevStats: FgStats | null;
-  savantStats?: FgStats | null;
-}
-
-interface ProjectionsFile {
-  players: Record<string, FgPlayer>;
-}
 
 interface RosterInfo {
   teamAbbr: string;
@@ -74,6 +59,21 @@ async function fetchJson(url: string): Promise<unknown> {
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function mapDepthRole(description: string): "Starter" | "Minors" {
+  const d = description.toLowerCase();
+  if (
+    d.includes("minor league") ||
+    d.includes("triple-a") ||
+    d.includes("double-a") ||
+    d.includes("single-a") ||
+    d.includes("optioned") ||
+    d.includes("assigned to minors")
+  ) {
+    return "Minors";
+  }
+  return "Starter";
 }
 
 function mapInjuryStatus(description: string): InjuryStatusValue {
@@ -181,7 +181,7 @@ function buildPlayerDoc(
     name: fg?.name ?? `Player ${mlbamId}`,
     mlbTeam: roster.teamAbbr,
     positions: [position],
-    depthRole: "Starter",
+    depthRole: mapDepthRole(roster.statusDesc),
     risk: riskFromInjury(injuryStatus),
     isEligible: true,
     projGames: injuryStatus === "60-Day IL" || injuryStatus === "Out for Season" ? 100 : 162,
@@ -286,19 +286,10 @@ async function seed() {
     process.exit(1);
   }
 
-  // Load projections.json if present
-  const projPath = path.resolve(__dirname, "projections.json");
-  let fgPlayers: Record<string, FgPlayer> = {};
-  if (fs.existsSync(projPath)) {
-    const raw = JSON.parse(fs.readFileSync(projPath, "utf-8")) as ProjectionsFile;
-    fgPlayers = raw.players ?? {};
-    console.log(`Loaded ${Object.keys(fgPlayers).length} players from projections.json`);
-  } else {
-    console.warn(
-      "projections.json not found — seeding without FanGraphs stats.\n" +
-      "Run fetch_projections.py first to include projections and 2025 stats."
-    );
-  }
+  // Fetch FanGraphs + Baseball Savant stats directly
+  console.log("Fetching FanGraphs projections and Baseball Savant stats...");
+  const fgPlayers = await fetchProjections();
+  console.log(`Loaded ${Object.keys(fgPlayers).length} players from FanGraphs / Savant.`);
 
   // Fetch roster map (player → team + injury status)
   const rosterMap = await fetchRosterMap();
