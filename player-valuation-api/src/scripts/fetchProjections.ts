@@ -7,10 +7,61 @@ export interface FgStats {
 export interface FgPlayer {
   name: string;
   mlbamId: number;
+  /** True if the player has hitter projections or 2025 hitter stats. */
+  isHitter: boolean;
+  /** True if the player has pitcher projections or 2025 pitcher stats. */
   isPitcher: boolean;
-  projStats: FgStats | null;
-  prevStats: FgStats | null;
+  projHittingStats: FgStats | null;
+  projPitchingStats: FgStats | null;
+  prevHittingStats: FgStats | null;
+  prevPitchingStats: FgStats | null;
   savantStats?: FgStats | null;
+}
+
+function emptyPlayer(mid: number, name: string): FgPlayer {
+  return {
+    name,
+    mlbamId: mid,
+    isHitter: false,
+    isPitcher: false,
+    projHittingStats: null,
+    projPitchingStats: null,
+    prevHittingStats: null,
+    prevPitchingStats: null,
+  };
+}
+
+function getOrCreate(map: Map<number, FgPlayer>, mid: number, name: string): FgPlayer {
+  let p = map.get(mid);
+  if (!p) {
+    p = emptyPlayer(mid, name);
+    map.set(mid, p);
+  } else if (!p.name && name) {
+    p.name = name;
+  }
+  return p;
+}
+
+function pos(v: number | null | undefined): number {
+  return v != null && Number.isFinite(v) ? Math.max(0, v) : 0;
+}
+
+/**
+ * Role-specific volume thresholds. FanGraphs's feeds emit rows for marginal cross-role
+ * appearances — e.g. a pitcher who got one PA in 2025 shows up in prev-hitters with
+ * games=1 and all other batting stats = 0. A generic "any field > 0" check accepts those
+ * spurious rows, flagging the pitcher as `isHitter` and triggering a phantom DH tag.
+ * The thresholds below filter to players with real batting/pitching volume.
+ */
+function isMeaningfulHitterStats(s: FgStats): boolean {
+  // Real hitters project/produce at least 1 HR or non-trivial run/RBI/SB volume.
+  // Pure pitchers in cross-role feed rows have HR=R=RBI=SB=0.
+  return pos(s.hr) >= 1 || pos(s.rbi) >= 5 || pos(s.r) >= 5 || pos(s.sb) >= 3;
+}
+
+function isMeaningfulPitcherStats(s: FgStats): boolean {
+  // Real pitchers project/produce non-trivial IP, K, or saves.
+  return pos(s.ip) >= 5 || pos(s.k) >= 5 || pos(s.w) >= 1 || pos(s.sv) >= 1;
 }
 
 const FG_BASE = "https://www.fangraphs.com/api";
@@ -160,29 +211,27 @@ export async function fetchProjections(): Promise<Record<string, FgPlayer>> {
   const players = new Map<number, FgPlayer>();
 
   // --- 2026 Steamer projections ---
+  // Two-way players (e.g. Ohtani) appear in BOTH feeds; we set role-specific fields
+  // rather than overwriting, so both stat sets land on the same FgPlayer.
   for (const row of await fetchJsonRows(FG_ENDPOINTS.proj_hitters, "2026 Steamer hitter projections")) {
     const mid = mlbamId(row);
     if (!mid) continue;
-    players.set(mid, {
-      name: playerName(row),
-      mlbamId: mid,
-      isPitcher: false,
-      projStats: buildHitterProj(row),
-      prevStats: null,
-    });
+    const stats = buildHitterProj(row);
+    if (!isMeaningfulHitterStats(stats)) continue;
+    const p = getOrCreate(players, mid, playerName(row));
+    p.isHitter = true;
+    p.projHittingStats = stats;
   }
   await delay(1000);
 
   for (const row of await fetchJsonRows(FG_ENDPOINTS.proj_pitchers, "2026 Steamer pitcher projections")) {
     const mid = mlbamId(row);
     if (!mid) continue;
-    players.set(mid, {
-      name: playerName(row),
-      mlbamId: mid,
-      isPitcher: true,
-      projStats: buildPitcherProj(row),
-      prevStats: null,
-    });
+    const stats = buildPitcherProj(row);
+    if (!isMeaningfulPitcherStats(stats)) continue;
+    const p = getOrCreate(players, mid, playerName(row));
+    p.isPitcher = true;
+    p.projPitchingStats = stats;
   }
   await delay(1000);
 
@@ -190,38 +239,22 @@ export async function fetchProjections(): Promise<Record<string, FgPlayer>> {
   for (const row of await fetchJsonRows(FG_ENDPOINTS.prev_hitters, "2025 actual hitter stats")) {
     const mid = mlbamId(row);
     if (!mid) continue;
-    const prev = buildHitterPrev(row);
-    const existing = players.get(mid);
-    if (existing) {
-      existing.prevStats = prev;
-    } else {
-      players.set(mid, {
-        name: playerName(row),
-        mlbamId: mid,
-        isPitcher: false,
-        projStats: null,
-        prevStats: prev,
-      });
-    }
+    const stats = buildHitterPrev(row);
+    if (!isMeaningfulHitterStats(stats)) continue;
+    const p = getOrCreate(players, mid, playerName(row));
+    p.isHitter = true;
+    p.prevHittingStats = stats;
   }
   await delay(1000);
 
   for (const row of await fetchJsonRows(FG_ENDPOINTS.prev_pitchers, "2025 actual pitcher stats")) {
     const mid = mlbamId(row);
     if (!mid) continue;
-    const prev = buildPitcherPrev(row);
-    const existing = players.get(mid);
-    if (existing) {
-      existing.prevStats = prev;
-    } else {
-      players.set(mid, {
-        name: playerName(row),
-        mlbamId: mid,
-        isPitcher: true,
-        projStats: null,
-        prevStats: prev,
-      });
-    }
+    const stats = buildPitcherPrev(row);
+    if (!isMeaningfulPitcherStats(stats)) continue;
+    const p = getOrCreate(players, mid, playerName(row));
+    p.isPitcher = true;
+    p.prevPitchingStats = stats;
   }
   await delay(1000);
 
@@ -240,19 +273,10 @@ export async function fetchProjections(): Promise<Record<string, FgPlayer>> {
       kPct:       safeFloat(row, 1, "k_percent"),
       bbPct:      safeFloat(row, 1, "bb_percent"),
     };
-    const existing = players.get(mid);
-    if (existing) {
-      existing.savantStats = stats;
-    } else {
-      players.set(mid, {
-        name: String(row.player_name ?? `Player ${mid}`),
-        mlbamId: mid,
-        isPitcher: false,
-        projStats: null,
-        prevStats: null,
-        savantStats: stats,
-      });
-    }
+    const p = getOrCreate(players, mid, String(row.player_name ?? `Player ${mid}`));
+    // Don't set isHitter from Savant — role flags should reflect projection/actual stat
+    // presence, not Statcast enrichment which can include borderline-PA players.
+    p.savantStats = { ...(p.savantStats ?? {}), ...stats };
     savantHitCount++;
   }
   console.log(`  Merged Savant xStats for ${savantHitCount} hitters.`);
@@ -272,19 +296,9 @@ export async function fetchProjections(): Promise<Record<string, FgPlayer>> {
       kPct:              safeFloat(row, 1, "k_percent"),
       bbPct:             safeFloat(row, 1, "bb_percent"),
     };
-    const existing = players.get(mid);
-    if (existing) {
-      existing.savantStats = stats;
-    } else {
-      players.set(mid, {
-        name: String(row.player_name ?? `Player ${mid}`),
-        mlbamId: mid,
-        isPitcher: true,
-        projStats: null,
-        prevStats: null,
-        savantStats: stats,
-      });
-    }
+    const p = getOrCreate(players, mid, String(row.player_name ?? `Player ${mid}`));
+    // Same as the hitter Savant block — flag is driven by FG stat presence, not Savant.
+    p.savantStats = { ...(p.savantStats ?? {}), ...stats };
     savantPitCount++;
   }
   console.log(`  Merged Savant xStats for ${savantPitCount} pitchers.`);

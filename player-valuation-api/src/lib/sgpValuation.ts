@@ -232,43 +232,61 @@ export function riskMultiplier(p: PlayerLean): number {
   return mult;
 }
 
+function hitterSGP(p: PlayerLean, denom: Denominators): number {
+  const avail = hitterAvailability(p);
+  const hr = (p.projHR ?? 0) * avail;
+  const rbi = (p.projRBI ?? 0) * avail;
+  const r = (p.projR ?? 0) * avail;
+  const sb = (p.projSB ?? 0) * avail;
+  const avg = blendRate(p.projAVG, p.xba, LEAGUE_AVG_BA);
+  const sgpHR = hr / denom.HR;
+  const sgpRBI = rbi / denom.RBI;
+  const sgpR = r / denom.R;
+  const sgpSB = sb / denom.SB;
+  const sgpAVG = (avg - LEAGUE_AVG_BA) / denom.AVG;
+  return Math.max(0, sgpHR + sgpRBI + sgpR + sgpSB + sgpAVG);
+}
+
+function pitcherSGP(p: PlayerLean, denom: Denominators): number {
+  const avail = pitcherAvailability(p);
+  const w = (p.projW ?? 0) * avail;
+  const k = (p.projK ?? 0) * avail;
+  const sv = (p.projSV ?? 0) * avail;
+  const era = blendRate(p.projERA, p.xera, LEAGUE_AVG_ERA);
+  const whip = p.projWHIP ?? LEAGUE_AVG_WHIP;
+  const sgpW = w / denom.W;
+  const sgpK = k / denom.K;
+  const sgpSV = sv / denom.SV;
+  const sgpERA = (LEAGUE_AVG_ERA - era) / denom.ERA;
+  const sgpWHIP = (LEAGUE_AVG_WHIP - whip) / denom.WHIP;
+  return Math.max(0, sgpW + sgpK + sgpSV + sgpERA + sgpWHIP);
+}
+
+function hasHitterStats(p: PlayerLean): boolean {
+  return p.projHR != null || p.projRBI != null || p.projAVG != null;
+}
+
+function hasPitcherStats(p: PlayerLean): boolean {
+  return p.projW != null || p.projK != null || p.projIP != null;
+}
+
 /**
- * Total SGP for the player (hitter or pitcher categories only).
- * Note: depth/role is intentionally NOT applied here — projections already reflect role.
- * Applying depthModifier on top double-counts the haircut.
+ * Total SGP. Two-way players (e.g. Ohtani — positions: ["P","DH"] with both stat sets)
+ * have their hitter and pitcher SGP summed; pure pitchers/hitters get one branch only.
+ * Depth/role is intentionally NOT applied — projections already reflect role.
  */
 export function computePlayerSGP(p: PlayerLean, numTeams = 12): number {
   const denom = getDenominators(numTeams);
-  const avail = availability(p);
-
-  let raw: number;
-  if (isPitcher(p)) {
-    const w = (p.projW ?? 0) * avail;
-    const k = (p.projK ?? 0) * avail;
-    const sv = (p.projSV ?? 0) * avail;
-    const era = blendRate(p.projERA, p.xera, LEAGUE_AVG_ERA);
-    const whip = p.projWHIP ?? LEAGUE_AVG_WHIP;
-    const sgpW = w / denom.W;
-    const sgpK = k / denom.K;
-    const sgpSV = sv / denom.SV;
-    const sgpERA = (LEAGUE_AVG_ERA - era) / denom.ERA;
-    const sgpWHIP = (LEAGUE_AVG_WHIP - whip) / denom.WHIP;
-    raw = Math.max(0, sgpW + sgpK + sgpSV + sgpERA + sgpWHIP);
-  } else {
-    const hr = (p.projHR ?? 0) * avail;
-    const rbi = (p.projRBI ?? 0) * avail;
-    const r = (p.projR ?? 0) * avail;
-    const sb = (p.projSB ?? 0) * avail;
-    const avg = blendRate(p.projAVG, p.xba, LEAGUE_AVG_BA);
-    const sgpHR = hr / denom.HR;
-    const sgpRBI = rbi / denom.RBI;
-    const sgpR = r / denom.R;
-    const sgpSB = sb / denom.SB;
-    const sgpAVG = (avg - LEAGUE_AVG_BA) / denom.AVG;
-    raw = Math.max(0, sgpHR + sgpRBI + sgpR + sgpSB + sgpAVG);
+  let total = 0;
+  if (isPitcher(p) && hasPitcherStats(p)) total += pitcherSGP(p, denom);
+  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) total += hitterSGP(p, denom);
+  // Fallback: positions array is pitcher-only but no pitcher stats present → treat as hitter
+  // if hitter stats exist, else 0. Keeps legacy single-position synthetic fixtures working.
+  if (total === 0) {
+    if (hasHitterStats(p)) total = hitterSGP(p, denom);
+    else if (hasPitcherStats(p)) total = pitcherSGP(p, denom);
   }
-
-  return raw * riskMultiplier(p);
+  return total * riskMultiplier(p);
 }
 
 function rosterSlots(league: LeagueConfig): Record<string, number> {
@@ -314,9 +332,20 @@ export function remainingAuctionDollars(
   return Math.max(0, initial - spent);
 }
 
-/** Eligible at position if any position matches (exact). */
-function eligibleAt(p: PlayerLean, pos: string): boolean {
-  return p.positions.some((x) => x === pos);
+/**
+ * Slot-eligibility rules for compound/flex slots. Player.positions stays as literal
+ * positions; flex slots are derived. CI = 1B|3B, MI = 2B|SS, UTIL = any non-pitcher position.
+ */
+const FLEX_SLOT_RULES: Record<string, (p: PlayerLean) => boolean> = {
+  CI: (p) => p.positions.includes("1B") || p.positions.includes("3B"),
+  MI: (p) => p.positions.includes("2B") || p.positions.includes("SS"),
+  UTIL: (p) => p.positions.some((x) => x !== "P"),
+};
+
+function eligibleAt(p: PlayerLean, slot: string): boolean {
+  const rule = FLEX_SLOT_RULES[slot];
+  if (rule) return rule(p);
+  return p.positions.includes(slot);
 }
 
 /**
@@ -352,15 +381,16 @@ function preferredAssignment(
   const sgp = computePlayerSGP(player, numTeams);
   let best = -Infinity;
   let bestPosition: string | undefined;
-  for (const pos of player.positions) {
-    const slotCount = slots[pos];
-    if (slotCount === undefined) continue;
-    const eligible = fullPool.filter((p) => eligibleAt(p, pos));
+  // Iterate slots (not player.positions) so flex slots (CI/MI/UTIL) are considered for any
+  // player whose positions satisfy the slot's eligibility rule.
+  for (const [slot, slotCount] of Object.entries(slots)) {
+    if (!eligibleAt(player, slot)) continue;
+    const eligible = fullPool.filter((p) => eligibleAt(p, slot));
     const rep = replacementSGPFromPool(eligible, numTeams, slotCount);
     const sar = sgp - rep;
     if (sar > best) {
       best = sar;
-      bestPosition = pos;
+      bestPosition = slot;
     }
   }
   return { bestPosition, sgp };

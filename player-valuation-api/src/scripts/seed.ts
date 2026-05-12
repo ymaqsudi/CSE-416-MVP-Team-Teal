@@ -88,11 +88,21 @@ function mapInjuryStatus(description: string): InjuryStatusValue {
   return "Active";
 }
 
+/**
+ * Map an MLB position abbreviation to the canonical position used in `player.positions`.
+ * Display labels only — flex-slot eligibility (CI/MI/UTIL) is computed by the algorithm
+ * from these literal positions, not stored on the document.
+ *
+ * Returns "" for unmappable positions (TWP, blanks); the caller should skip empty strings.
+ */
 function mapPosition(mlbAbbr: string): string {
   if (["LF", "CF", "RF"].includes(mlbAbbr)) return "OF";
   if (["SP", "RP"].includes(mlbAbbr)) return "P";
-  if (mlbAbbr === "DH") return "U";
-  return mlbAbbr; // 1B, 2B, 3B, SS, C, P already match
+  if (mlbAbbr === "DH") return "DH";
+  // TWP players don't have a real primary position — defer to byPosition + dual-stats merge.
+  if (mlbAbbr === "TWP") return "";
+  if (["1B", "2B", "3B", "SS", "C", "P"].includes(mlbAbbr)) return mlbAbbr;
+  return ""; // unknown / blank
 }
 
 function riskFromInjury(status: InjuryStatusValue): "Low" | "Med" | "High" {
@@ -161,26 +171,100 @@ async function fetchPersonDetails(ids: number[]): Promise<Map<number, PersonDeta
   return map;
 }
 
+/**
+ * Fetch position-by-position appearances from MLB's 2025 fielding stats and apply the
+ * Yahoo eligibility threshold (≥5 starts OR ≥10 games at a position). Returns a map of
+ * player ID to the set of raw MLB position abbreviations they qualified at.
+ *
+ * Uses the `hydrate` query param to bulk-fetch stats with /people, keeping the round-trip
+ * count to ~25 chunks of 50 instead of 1200 individual /stats calls.
+ *
+ * Note: DH games don't appear in `group=fielding` (DH is not a defensive position). For
+ * DH-only hitters and two-way players whose hitting is DH-only, the caller falls back to
+ * adding "DH" when fg.isHitter is true but no hitter fielding positions met the threshold.
+ */
+async function fetchPositionEligibility(
+  ids: number[],
+  season = 2025,
+): Promise<Map<number, Set<string>>> {
+  const map = new Map<number, Set<string>>();
+  const chunkSize = 50;
+
+  console.log(`Fetching by-position eligibility (${season}) for ${ids.length} players...`);
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    // Use stats=season (group=fielding) — returns one split per position-played with
+    // games/gamesStarted. The MLB API does NOT support a literal `byPosition` stat type
+    // (it silently returns zero blocks), which was the original bug.
+    const url =
+      `${MLB_API}/people?personIds=${chunk.join(",")}` +
+      `&hydrate=stats(group=[fielding],type=[season],season=${season})`;
+    try {
+      const data = await fetchJson(url) as { people?: any[] };
+      for (const person of data.people ?? []) {
+        const positions = new Set<string>();
+        for (const block of person.stats ?? []) {
+          for (const split of block.splits ?? []) {
+            const games = Number(split.stat?.games ?? 0);
+            const started = Number(split.stat?.gamesStarted ?? 0);
+            const abbr = split.position?.abbreviation;
+            if (typeof abbr === "string" && (started >= 5 || games >= 10)) {
+              positions.add(abbr);
+            }
+          }
+        }
+        if (person.id != null) map.set(person.id, positions);
+      }
+    } catch (e) {
+      console.warn(`  Warning: byPosition fetch failed for chunk at index ${i}`);
+    }
+    if (i + chunkSize < ids.length) await delay(150);
+  }
+  return map;
+}
+
 // ---------------------------------------------------------------------------
 // Build player document
 // ---------------------------------------------------------------------------
+
+const HITTER_FIELDING_POSITIONS = new Set(["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "OF"]);
 
 function buildPlayerDoc(
   mlbamId: number,
   roster: RosterInfo,
   person: PersonDetail | undefined,
   fg: FgPlayer | undefined,
+  eligiblePositions: Set<string> | undefined,
 ): object {
   const injuryStatus = mapInjuryStatus(roster.statusDesc);
-  const position = mapPosition(roster.positionAbbr);
-  const isPitcher = position === "P" || fg?.isPitcher === true;
+
+  // Union of primary roster position + byPosition eligibility, mapped + deduped.
+  const positions = new Set<string>();
+  const primary = mapPosition(roster.positionAbbr);
+  if (primary) positions.add(primary);
+  for (const raw of eligiblePositions ?? []) {
+    const mapped = mapPosition(raw);
+    if (mapped) positions.add(mapped);
+  }
+  // Add P when FG has pitcher stats — covers two-way players whose primary is "TWP"
+  // (mapped to "") and pitchers absent from MLB byPosition fielding for some reason.
+  if (fg?.isPitcher) positions.add("P");
+
+  // Two-way + DH-only fallback: byPosition (fielding) doesn't include DH games. If we have
+  // hitter stats but no hitter fielding position made the threshold, mark them DH.
+  const hasHitterFieldingPos = [...positions].some(
+    (p) => p !== "P" && HITTER_FIELDING_POSITIONS.has(p),
+  );
+  if (fg?.isHitter && !hasHitterFieldingPos) {
+    positions.add("DH");
+  }
 
   const doc: Record<string, unknown> = {
     mlbPlayerId: mlbamId,
     mlbTeamId: roster.teamId,
     name: fg?.name ?? `Player ${mlbamId}`,
     mlbTeam: roster.teamAbbr,
-    positions: [position],
+    positions: [...positions],
     depthRole: mapDepthRole(roster.statusDesc),
     risk: riskFromInjury(injuryStatus),
     isEligible: true,
@@ -194,36 +278,18 @@ function buildPlayerDoc(
   if (person?.bats) doc.bats = person.bats;
   if (person?.throws) doc.throws = person.throws;
 
-  // 2026 projected stats
-  if (fg?.projStats) {
-    const p = fg.projStats;
-    if (isPitcher) {
-      doc.projW    = p.w    ?? undefined;
-      doc.projERA  = p.era  ?? undefined;
-      doc.projWHIP = p.whip ?? undefined;
-      doc.projK    = p.k    ?? undefined;
-      doc.projSV   = p.sv   ?? undefined;
-      doc.projIP   = p.ip   ?? undefined;
-    } else {
+  // Hitter projections + 2025 actuals + Savant
+  if (fg?.isHitter) {
+    if (fg.projHittingStats) {
+      const p = fg.projHittingStats;
       doc.projHR  = p.hr  ?? undefined;
       doc.projRBI = p.rbi ?? undefined;
       doc.projR   = p.r   ?? undefined;
       doc.projSB  = p.sb  ?? undefined;
       doc.projAVG = p.avg ?? undefined;
     }
-  }
-
-  // 2025 actual stats
-  if (fg?.prevStats) {
-    const p = fg.prevStats;
-    if (isPitcher) {
-      doc.prevW    = p.w    ?? undefined;
-      doc.prevERA  = p.era  ?? undefined;
-      doc.prevWHIP = p.whip ?? undefined;
-      doc.prevK    = p.k    ?? undefined;
-      doc.prevSV   = p.sv   ?? undefined;
-      doc.prevIP   = p.ip   ?? undefined;
-    } else {
+    if (fg.prevHittingStats) {
+      const p = fg.prevHittingStats;
       doc.prevGames = p.games ?? undefined;
       doc.prevHR    = p.hr    ?? undefined;
       doc.prevRBI   = p.rbi   ?? undefined;
@@ -231,30 +297,53 @@ function buildPlayerDoc(
       doc.prevSB    = p.sb    ?? undefined;
       doc.prevAVG   = p.avg   ?? undefined;
     }
-  }
-
-  // Statcast advanced stats
-  if (fg?.savantStats) {
-    const s = fg.savantStats;
-    if (isPitcher) {
-      doc.xera              = s.xera              ?? undefined;
-      doc.whiffPct          = s.whiffPct          ?? undefined;
-      doc.barrelPctAgainst  = s.barrelPctAgainst  ?? undefined;
-      doc.hardHitPctAgainst = s.hardHitPctAgainst ?? undefined;
-      doc.exitVeloAgainst   = s.exitVeloAgainst   ?? undefined;
-      doc.kPct              = s.kPct              ?? undefined;
-      doc.bbPct             = s.bbPct             ?? undefined;
-    } else {
+    if (fg.savantStats) {
+      const s = fg.savantStats;
       doc.xba         = s.xba         ?? undefined;
       doc.xslg        = s.xslg        ?? undefined;
       doc.xwoba       = s.xwoba       ?? undefined;
       doc.barrelPct   = s.barrelPct   ?? undefined;
       doc.hardHitPct  = s.hardHitPct  ?? undefined;
       doc.exitVelo    = s.exitVelo    ?? undefined;
-      doc.kPct        = s.kPct        ?? undefined;
-      doc.bbPct       = s.bbPct       ?? undefined;
       doc.sprintSpeed = s.sprintSpeed ?? undefined;
     }
+  }
+
+  // Pitcher projections + 2025 actuals + Savant
+  if (fg?.isPitcher) {
+    if (fg.projPitchingStats) {
+      const p = fg.projPitchingStats;
+      doc.projW    = p.w    ?? undefined;
+      doc.projERA  = p.era  ?? undefined;
+      doc.projWHIP = p.whip ?? undefined;
+      doc.projK    = p.k    ?? undefined;
+      doc.projSV   = p.sv   ?? undefined;
+      doc.projIP   = p.ip   ?? undefined;
+    }
+    if (fg.prevPitchingStats) {
+      const p = fg.prevPitchingStats;
+      doc.prevW    = p.w    ?? undefined;
+      doc.prevERA  = p.era  ?? undefined;
+      doc.prevWHIP = p.whip ?? undefined;
+      doc.prevK    = p.k    ?? undefined;
+      doc.prevSV   = p.sv   ?? undefined;
+      doc.prevIP   = p.ip   ?? undefined;
+    }
+    if (fg.savantStats) {
+      const s = fg.savantStats;
+      doc.xera              = s.xera              ?? undefined;
+      doc.whiffPct          = s.whiffPct          ?? undefined;
+      doc.barrelPctAgainst  = s.barrelPctAgainst  ?? undefined;
+      doc.hardHitPctAgainst = s.hardHitPctAgainst ?? undefined;
+      doc.exitVeloAgainst   = s.exitVeloAgainst   ?? undefined;
+    }
+  }
+
+  // K%/BB% are shared between hitter and pitcher Savant payloads; write last so a two-way
+  // player's most recent value wins (in practice both feeds set the same field on him).
+  if (fg?.savantStats) {
+    if (fg.savantStats.kPct != null) doc.kPct = fg.savantStats.kPct;
+    if (fg.savantStats.bbPct != null) doc.bbPct = fg.savantStats.bbPct;
   }
 
   return doc;
@@ -298,6 +387,9 @@ async function seed() {
   const allIds = [...rosterMap.keys()];
   const personMap = await fetchPersonDetails(allIds);
 
+  // Fetch 2025 by-position eligibility (Yahoo standard: ≥5 starts OR ≥10 games at a position)
+  const eligibilityMap = await fetchPositionEligibility(allIds);
+
   // Merge into player documents
   console.log("Building player documents...");
   const docs: object[] = [];
@@ -305,7 +397,8 @@ async function seed() {
   for (const [mlbamId, roster] of rosterMap) {
     const fg = fgPlayers[String(mlbamId)];
     const person = personMap.get(mlbamId);
-    docs.push(buildPlayerDoc(mlbamId, roster, person, fg));
+    const eligible = eligibilityMap.get(mlbamId);
+    docs.push(buildPlayerDoc(mlbamId, roster, person, fg, eligible));
   }
 
   // Also add any FanGraphs players that weren't on a 40-man roster
