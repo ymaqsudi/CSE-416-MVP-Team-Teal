@@ -489,12 +489,20 @@ function computeParValues(
     result.set(id, { p, sgp, above, bestPosition, par: 0 });
   }
 
-  // Pass 4: par dollars. $1/player floor reserved; remainder split by SAR share.
-  const floor = result.size;
-  const distributable = Math.max(0, budget - floor);
+  // Pass 4: par dollars. Industry-standard auction model — only the players who
+  // actually get drafted (above replacement) reserve a $1 floor. Sub-replacement
+  // players go undrafted and receive $0. `budget` was pre-netted of the auctioned
+  // floor in totalAuctionBudget, so the floor here matches that pre-netting.
+  const totalSlots = slotEntries.reduce((sum, [, c]) => sum + c, 0);
+  const auctionedCount = numTeams * totalSlots;
+  const distributable = Math.max(0, budget - auctionedCount);
   for (const entry of result.values()) {
-    const share = sumAbove > 0 ? (entry.above / sumAbove) * distributable : 0;
-    entry.par = 1 + share;
+    if (entry.above > 0) {
+      const share = sumAbove > 0 ? (entry.above / sumAbove) * distributable : 0;
+      entry.par = 1 + share;
+    } else {
+      entry.par = 0;
+    }
   }
 
   return result;
