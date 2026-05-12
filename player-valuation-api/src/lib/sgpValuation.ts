@@ -416,7 +416,12 @@ function computeParValues(
   const slots = rosterSlots(league);
   const slotEntries = Object.entries(slots);
   const { numTeams } = league;
-  const eligible = pool.filter((p) => p.isEligible !== false);
+  // Exclude minor-league players from the valuation pool. They were inflating
+  // `eligible.length`, which drives the $1/player floor in Pass 4 and shrinks the
+  // distributable budget that flows to SAR-positive starters.
+  const eligible = pool.filter(
+    (p) => p.isEligible !== false && p.depthRole !== "Minors",
+  );
 
   // Precompute SGP per player once — replaces ~n² calls to computePlayerSGP across the
   // assignment + replacement loops.
