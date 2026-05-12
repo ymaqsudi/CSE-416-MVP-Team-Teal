@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
+import { PlayerModel } from "./models/Player.js";
 import { apiKeyMiddleware } from "./middleware/apiKey.js";
 import playersRouter from "./routes/players.js";
 import transactionsRouter from "./routes/transactions.js";
@@ -33,6 +34,9 @@ async function start() {
   try {
     await mongoose.connect(MONGODB_URI);
     console.log("MongoDB connected.");
+    // STAGE 1 DIAGNOSTIC — capture the actual seeded player count so perf measurements have an anchor.
+    const playerCount = await PlayerModel.countDocuments({});
+    console.log(`[startup] PlayerModel.countDocuments = ${playerCount}`);
   } catch (err) {
     console.error("MongoDB connection failed:", err);
     process.exit(1);

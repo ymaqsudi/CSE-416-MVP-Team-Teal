@@ -45,9 +45,17 @@ export async function valuationMapFor(
   league: LeagueConfig,
   draft: DraftStateInput
 ): Promise<Map<string, ValuationBreakdown>> {
+  // STAGE 1 DIAGNOSTIC — remove once perf is validated in deployed env.
+  const t0 = Date.now();
   const all = (await PlayerModel.find({}).lean().exec()) as PlayerLean[];
+  const tFind = Date.now();
   const pool = undraftedPlayers(all, draft.picks ?? []);
   const rem = remainingAuctionDollars(league, draft);
   // Pass the full pool so static-par + inflation kicks in once picks have happened.
-  return valuePool(pool, league, rem, { fullPool: all });
+  const result = valuePool(pool, league, rem, { fullPool: all });
+  const tValue = Date.now();
+  console.log(
+    `[valuationMapFor] n=${all.length} find=${tFind - t0}ms value=${tValue - tFind}ms total=${tValue - t0}ms`,
+  );
+  return result;
 }
