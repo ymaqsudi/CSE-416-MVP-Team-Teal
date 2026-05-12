@@ -1,5 +1,6 @@
 import { PlayerModel } from "../models/Player.js";
 import { SessionModel } from "../models/Session.js";
+import { MLB_LEAGUE_BY_TEAM } from "../lib/mlbLeagueMap.js";
 import {
   DEFAULT_DISPLAY_LEAGUE,
   valuePool,
@@ -11,9 +12,13 @@ import {
   type ValuationBreakdown,
 } from "../lib/sgpValuation.js";
 
+export function parseMlbLeague(value: unknown): "AL" | "NL" | undefined {
+  return value === "AL" || value === "NL" ? value : undefined;
+}
+
 export async function leagueDraftFromQuery(
   sessionId: unknown,
-  opts: { requireSession: boolean }
+  opts: { requireSession: boolean; mlbLeague?: "AL" | "NL" }
 ): Promise<
   | { ok: true; league: LeagueConfig; draft: DraftStateInput }
   | { ok: false; status: number; message: string }
@@ -24,21 +29,31 @@ export async function leagueDraftFromQuery(
     if (opts.requireSession) {
       return { ok: false, status: 400, message: "sessionId is required" };
     }
-    return { ok: true, league: DEFAULT_DISPLAY_LEAGUE, draft: { picks: [] } };
+    return {
+      ok: true,
+      league: { ...DEFAULT_DISPLAY_LEAGUE, mlbLeague: opts.mlbLeague },
+      draft: { picks: [] },
+    };
   }
   const doc = await SessionModel.findOne({ sessionId: String(sessionId).trim() })
     .lean()
     .exec();
   if (!doc) return { ok: false, status: 404, message: "Session not found" };
   const draft = (doc.draftState ?? { picks: [] }) as DraftStateInput;
+  const sessionLeague = doc.league as LeagueConfig;
   return {
     ok: true,
-    league: doc.league as LeagueConfig,
+    league: { ...sessionLeague, mlbLeague: opts.mlbLeague ?? sessionLeague.mlbLeague },
     draft: {
       picks: draft.picks ?? [],
       budgetsRemaining: draft.budgetsRemaining,
     },
   };
+}
+
+export function filterPoolByLeague(players: PlayerLean[], league: LeagueConfig): PlayerLean[] {
+  if (!league.mlbLeague) return players;
+  return players.filter((p) => MLB_LEAGUE_BY_TEAM[p.mlbTeam] === league.mlbLeague);
 }
 
 export async function valuationMapFor(
@@ -47,7 +62,8 @@ export async function valuationMapFor(
 ): Promise<Map<string, ValuationBreakdown>> {
   // STAGE 1 DIAGNOSTIC — remove once perf is validated in deployed env.
   const t0 = Date.now();
-  const all = (await PlayerModel.find({}).lean().exec()) as PlayerLean[];
+  const allRaw = (await PlayerModel.find({}).lean().exec()) as PlayerLean[];
+  const all = filterPoolByLeague(allRaw, league);
   const tFind = Date.now();
   const pool = undraftedPlayers(all, draft.picks ?? []);
   const rem = remainingAuctionDollars(league, draft);

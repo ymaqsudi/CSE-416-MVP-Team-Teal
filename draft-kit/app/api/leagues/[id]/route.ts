@@ -68,6 +68,7 @@ export async function PATCH(
       categories,
       teams: incomingTeams,
       myTeamId: incomingMyTeamId,
+      scope,
     } = body;
 
     if (!leagueName || !teamCount || !budget) {
@@ -118,6 +119,9 @@ export async function PATCH(
     league.scoringType = scoringType ? String(scoringType) : "rotisserie";
     league.categories = Array.isArray(categories) ? categories : [];
     league.teams = merged;
+    if (scope === "MLB" || scope === "AL" || scope === "NL") {
+      league.scope = scope;
+    }
 
     console.log("Before save mainRosterSlots:", league.mainRosterSlots);
 

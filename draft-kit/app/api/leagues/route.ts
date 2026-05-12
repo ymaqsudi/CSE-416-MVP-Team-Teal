@@ -61,7 +61,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { leagueName, teamCount, budget, mainRosterSlots, scoringType, categories } = body;
+    const { leagueName, teamCount, budget, mainRosterSlots, scoringType, categories, scope } = body;
+    const normalizedScope = scope === "AL" || scope === "NL" ? scope : "MLB";
 
     if (!leagueName || !teamCount || !budget) {
       return NextResponse.json(
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
       categories: Array.isArray(categories) ? categories : [],
       teams: seededTeams,
       myTeamId: seededTeams[0]?.id ?? "",
+      scope: normalizedScope,
     });
 
     return NextResponse.json(

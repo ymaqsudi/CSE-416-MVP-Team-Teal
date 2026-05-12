@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import { PlayerModel } from "../models/Player.js";
 import { findPlayerByRequestId } from "../lib/resolvePlayer.js";
-import { leagueDraftFromQuery, valuationMapFor } from "../services/valuationContext.js";
+import { leagueDraftFromQuery, valuationMapFor, parseMlbLeague } from "../services/valuationContext.js";
+import { MLB_LEAGUE_BY_TEAM } from "../lib/mlbLeagueMap.js";
 import {
   isPlayerDrafted,
   adviceLabel,
@@ -84,7 +85,14 @@ function toPlayer(doc: PlayerLean) {
 export async function getPlayers(req: Request, res: Response): Promise<void> {
   try {
     const { q, position, limit } = req.query;
+    const mlbLeague = parseMlbLeague(req.query.mlbLeague);
     let query: Record<string, unknown> = {};
+    if (mlbLeague) {
+      const teamsInLeague = Object.entries(MLB_LEAGUE_BY_TEAM)
+        .filter(([, lg]) => lg === mlbLeague)
+        .map(([abbr]) => abbr);
+      query.mlbTeam = { $in: teamsInLeague };
+    }
 
     if (typeof q === "string" && q.trim()) {
       const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -136,7 +144,7 @@ export async function getValuation(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false });
+    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false, mlbLeague: parseMlbLeague(req.query.mlbLeague) });
     if (!ctx.ok) {
       res.status(ctx.status).json({ message: ctx.message });
       return;

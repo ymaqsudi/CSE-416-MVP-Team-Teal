@@ -30,6 +30,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { filterPlayersByScope, type LeagueScope } from "@/lib/shared/mlbLeagueMap";
 
 
 
@@ -101,6 +102,7 @@ export default function PlayersPage() {
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [activeLeagueId, setActiveLeagueId] = useState<string>("");
+  const [leagueScope, setLeagueScope] = useState<LeagueScope>("MLB");
   const [customPlayers, setCustomPlayers] = useState<Player[]>([]);
   const [showAddPlayerDialog, setShowAddPlayerDialog] = useState(false);
   const [addPlayerLoading, setAddPlayerLoading] = useState(false);
@@ -135,7 +137,8 @@ export default function PlayersPage() {
   useEffect(() => {
     async function fetchValuations() {
       try {
-        const res = await fetch("/api/valuation/valuations/all");
+        const qs = leagueScope === "MLB" ? "" : `?mlbLeague=${leagueScope}`;
+        const res = await fetch(`/api/valuation/valuations/all${qs}`);
         if (!res.ok) return;
         const data = await res.json();
         const map: Record<string, number> = {};
@@ -148,13 +151,37 @@ export default function PlayersPage() {
       }
     }
     fetchValuations();
-  }, []);
+  }, [leagueScope]);
 
   useEffect(() => {
     const storedLeagueId = localStorage.getItem("draftkit_leagueId");
     if (storedLeagueId) {
       setActiveLeagueId(storedLeagueId);
     }
+  }, []);
+
+  useEffect(() => {
+    async function loadLeagueScope() {
+      const token = localStorage.getItem("draftkit_token");
+      const leagueId = localStorage.getItem("draftkit_leagueId");
+      if (!token) return;
+      try {
+        const res = await fetch("/api/leagues", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const league =
+          (data.leagues ?? []).find((l: { _id: string }) => l._id === leagueId) ??
+          data.leagues?.[0];
+        if (league?.scope === "AL" || league?.scope === "NL" || league?.scope === "MLB") {
+          setLeagueScope(league.scope);
+        }
+      } catch (e) {
+        console.error("Failed to load league scope:", e);
+      }
+    }
+    loadLeagueScope();
   }, []);
 
   const fetchCustomPlayers = useCallback(async () => {
@@ -196,8 +223,8 @@ export default function PlayersPage() {
   }, [fetchCustomPlayers]);
 
   const allPlayers = useMemo(() => {
-    return [...customPlayers, ...players];
-  }, [customPlayers, players]);
+    return filterPlayersByScope([...customPlayers, ...players], leagueScope);
+  }, [customPlayers, players, leagueScope]);
   
   const filtered = useMemo(() => {
     return allPlayers.filter((p) => {

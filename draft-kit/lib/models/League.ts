@@ -15,6 +15,7 @@ export interface ILeague extends Document {
   categories: string[];
   teams: ITeam[];
   myTeamId: string;
+  scope: "MLB" | "AL" | "NL";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,6 +74,12 @@ const LeagueSchema = new Schema<ILeague>(
     myTeamId: {
       type: String,
       default: "",
+    },
+    scope: {
+      type: String,
+      enum: ["MLB", "AL", "NL"],
+      default: "MLB",
+      required: true,
     },
   },
   {

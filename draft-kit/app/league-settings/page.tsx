@@ -31,6 +31,7 @@ type League = {
   categories: string[];
   teams?: Team[];
   myTeamId?: string;
+  scope?: "MLB" | "AL" | "NL";
 };
 
 export default function LeagueSettingsPage() {
@@ -45,6 +46,7 @@ export default function LeagueSettingsPage() {
   const [categories, setCategories] = useState("HR,RBI,R,SB,AVG");
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeamId, setMyTeamId] = useState<string>("");
+  const [scope, setScope] = useState<"MLB" | "AL" | "NL">("MLB");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -97,6 +99,7 @@ export default function LeagueSettingsPage() {
           setCategories(existingLeague.categories.join(","));
           setTeams(existingLeague.teams ?? []);
           setMyTeamId(existingLeague.myTeamId ?? "");
+          setScope(existingLeague.scope ?? "MLB");
         }
       } catch (err) {
         console.error("Load league settings error:", err);
@@ -120,6 +123,7 @@ export default function LeagueSettingsPage() {
     setCategories("HR,RBI,R,SB,AVG");
     setTeams([]);
     setMyTeamId("");
+    setScope("MLB");
     setError("");
     setSuccess("");
     localStorage.removeItem("draftkit_leagueId");
@@ -188,6 +192,7 @@ export default function LeagueSettingsPage() {
           categories: parsedCategories,
           teams,
           myTeamId,
+          scope,
         }),
       });
 
@@ -294,6 +299,28 @@ export default function LeagueSettingsPage() {
               onChange={(e) => setTeamCount(e.target.value)}
               disabled={isLoading}
             />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Player Pool
+            </label>
+            <Select
+              value={scope}
+              onValueChange={(v) => setScope(v as "MLB" | "AL" | "NL")}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="MLB">All MLB players</SelectItem>
+                <SelectItem value="AL">American League only</SelectItem>
+                <SelectItem value="NL">National League only</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Restricts the draftable player pool to the chosen league.
+            </p>
           </div>
 
           <div className="space-y-2">

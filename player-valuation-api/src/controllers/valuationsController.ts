@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { leagueDraftFromQuery, valuationMapFor } from "../services/valuationContext.js";
+import { leagueDraftFromQuery, valuationMapFor, parseMlbLeague, filterPoolByLeague } from "../services/valuationContext.js";
 import {
   undraftedPlayers,
   playerIdString,
@@ -10,7 +10,7 @@ import { parsePlayerRef, findPlayerByParsedRef } from "../lib/resolvePlayer.js";
 
 export async function postValuationsBatch(req: Request, res: Response): Promise<void> {
   try {
-    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: true });
+    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: true, mlbLeague: parseMlbLeague(req.query.mlbLeague) });
     if (!ctx.ok) {
       res.status(ctx.status).json({ message: ctx.message });
       return;
@@ -75,7 +75,7 @@ export async function postValuationsBatch(req: Request, res: Response): Promise<
 
 export async function getValuationsAll(req: Request, res: Response): Promise<void> {
   try {
-    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false });
+    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false, mlbLeague: parseMlbLeague(req.query.mlbLeague) });
     if (!ctx.ok) {
       res.status(ctx.status).json({ message: ctx.message });
       return;
@@ -90,7 +90,8 @@ export async function getValuationsAll(req: Request, res: Response): Promise<voi
         ? Number(req.query.minValue)
         : undefined;
 
-    const all = (await PlayerModel.find({}).lean().exec()) as PlayerLean[];
+    const allRaw = (await PlayerModel.find({}).lean().exec()) as PlayerLean[];
+    const all = filterPoolByLeague(allRaw, ctx.league);
     const pool = undraftedPlayers(all, ctx.draft.picks ?? []);
     const map = await valuationMapFor(ctx.league, ctx.draft);
 

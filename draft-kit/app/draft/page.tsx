@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { filterPlayersByScope, type LeagueScope } from "@/lib/shared/mlbLeagueMap";
 type Player = {
   id: string;
   mlbPlayerId?: number;
@@ -51,6 +52,7 @@ export default function DraftPage() {
   const [picks, setPicks] = useState<DraftPick[]>([]);
   const [budget, setBudget] = useState<number | null>(null);
   const [mainRosterSlots, setMainRosterSlots] = useState<number>(23);
+  const [leagueScope, setLeagueScope] = useState<LeagueScope>("MLB");
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeamId, setMyTeamId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -111,12 +113,16 @@ export default function DraftPage() {
             mainRosterSlots?: number;
             teams?: Team[];
             myTeamId?: string;
+            scope?: "MLB" | "AL" | "NL";
           }) => l._id === leagueId,
         );
         if (league) {
           setBudget(league.budget);
           setMainRosterSlots(Number(league.mainRosterSlots) || 23);
           setTeams(league.teams ?? []);
+          if (league.scope === "AL" || league.scope === "NL" || league.scope === "MLB") {
+            setLeagueScope(league.scope);
+          }
           setMyTeamId(league.myTeamId ?? "");
         }
       } catch {
@@ -134,7 +140,8 @@ export default function DraftPage() {
     }
     const controller = new AbortController();
     setSearchLoading(true);
-    fetch(`/api/valuation/players?q=${encodeURIComponent(searchQuery)}&limit=10`, {
+    const scopeParam = leagueScope === "MLB" ? "" : `&mlbLeague=${leagueScope}`;
+    fetch(`/api/valuation/players?q=${encodeURIComponent(searchQuery)}&limit=10${scopeParam}`, {
       signal: controller.signal,
     })
       .then((r) => r.json())
@@ -142,7 +149,7 @@ export default function DraftPage() {
       .catch(() => {})
       .finally(() => setSearchLoading(false));
     return () => controller.abort();
-  }, [searchQuery, selectedPlayer]);
+  }, [searchQuery, selectedPlayer, leagueScope]);
 
   // derive drafted player IDs for filtering available players
   const draftedIds = new Set(picks.map((p) => p.playerId));
@@ -174,7 +181,9 @@ export default function DraftPage() {
   const isSelectedTeamFull =
     teamId !== "" && selectedTeamPickCount >= mainRosterSlots;
 
-  const filteredPlayers = searchResults.filter((p) => !draftedIds.has(p.id));
+  const filteredPlayers = filterPlayersByScope(searchResults, leagueScope).filter(
+    (p) => !draftedIds.has(p.id),
+  );
 
   async function handleRecordPick() {
     if (!selectedPlayer || !teamId || !price) {
@@ -340,7 +349,7 @@ export default function DraftPage() {
                             setSelectedPlayer(p);
                             setSearchQuery(p.name);
                             setSelectedValuation(null);
-                            fetch(`/api/valuation/players/${p.mlbPlayerId ?? p.id}/valuation`)
+                            fetch(`/api/valuation/players/${p.mlbPlayerId ?? p.id}/valuation${leagueScope === "MLB" ? "" : `?mlbLeague=${leagueScope}`}`)
                               .then((r) => r.json())
                               .then((data) => setSelectedValuation(data.valuation?.dollarValue ?? null))
                               .catch(() => {});

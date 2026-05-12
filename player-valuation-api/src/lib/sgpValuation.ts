@@ -70,6 +70,7 @@ export type LeagueConfig = {
   budget: number;
   scoring?: string;
   rosterSlotsPerTeam?: Record<string, number>;
+  mlbLeague?: "AL" | "NL";
 };
 
 export type DraftPickInput = {
