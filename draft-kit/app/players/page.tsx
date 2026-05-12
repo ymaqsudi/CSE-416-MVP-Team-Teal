@@ -20,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,35 @@ import {
 import { Label } from "@/components/ui/label";
 
 
+
+type StatKey =
+  | "hr"
+  | "rbi"
+  | "r"
+  | "sb"
+  | "avg"
+  | "w"
+  | "era"
+  | "whip"
+  | "k"
+  | "sv"
+  | "ip";
+
+const STAT_OPTIONS: { key: StatKey; label: string; lowerIsBetter?: boolean }[] = [
+  { key: "hr", label: "HR" },
+  { key: "rbi", label: "RBI" },
+  { key: "r", label: "R" },
+  { key: "sb", label: "SB" },
+  { key: "avg", label: "AVG" },
+  { key: "w", label: "W" },
+  { key: "era", label: "ERA", lowerIsBetter: true },
+  { key: "whip", label: "WHIP", lowerIsBetter: true },
+  { key: "k", label: "K" },
+  { key: "sv", label: "SV" },
+  { key: "ip", label: "IP" },
+];
+
+type SortKey = "name" | "team" | "age" | "value" | `stat:${StatKey}`;
 
 const ALL_POSITIONS: Position[] = [
   "C",
@@ -64,10 +93,13 @@ const injuryColors: Record<string, string> = {
 
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [valuations, setValuations] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [position, setPosition] = useState<Position | "All">("All");
+  const [sortKey, setSortKey] = useState<SortKey>("value");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [activeLeagueId, setActiveLeagueId] = useState<string>("");
   const [customPlayers, setCustomPlayers] = useState<Player[]>([]);
   const [showAddPlayerDialog, setShowAddPlayerDialog] = useState(false);
@@ -98,6 +130,24 @@ export default function PlayersPage() {
       }
     }
     fetchPlayers();
+  }, []);
+
+  useEffect(() => {
+    async function fetchValuations() {
+      try {
+        const res = await fetch("/api/valuation/valuations/all");
+        if (!res.ok) return;
+        const data = await res.json();
+        const map: Record<string, number> = {};
+        for (const v of data.valuations ?? []) {
+          if (v.playerId != null) map[String(v.playerId)] = v.dollarValue;
+        }
+        setValuations(map);
+      } catch (e) {
+        console.error("Failed to load valuations:", e);
+      }
+    }
+    fetchValuations();
   }, []);
 
   useEffect(() => {
@@ -159,6 +209,71 @@ export default function PlayersPage() {
       return matchesSearch && matchesPosition;
     });
   }, [allPlayers, search, position]);
+
+  const activeStatKey: StatKey | null = sortKey.startsWith("stat:")
+    ? (sortKey.slice(5) as StatKey)
+    : null;
+
+  const getStatValue = (p: Player, key: StatKey): number | undefined => {
+    const proj = (p.projStats ?? {}) as Record<string, number | undefined>;
+    const prev = (p.prevStats ?? {}) as Record<string, number | undefined>;
+    return proj[key] ?? prev[key];
+  };
+
+  const sorted = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      let av: number | string | undefined;
+      let bv: number | string | undefined;
+      if (sortKey === "name") {
+        av = a.name.toLowerCase();
+        bv = b.name.toLowerCase();
+      } else if (sortKey === "team") {
+        av = (a.mlbTeam ?? "").toLowerCase();
+        bv = (b.mlbTeam ?? "").toLowerCase();
+      } else if (sortKey === "age") {
+        av = a.age;
+        bv = b.age;
+      } else if (sortKey === "value") {
+        av = valuations[a.id];
+        bv = valuations[b.id];
+      } else if (activeStatKey) {
+        av = getStatValue(a, activeStatKey);
+        bv = getStatValue(b, activeStatKey);
+      }
+      const aMissing = av === undefined || av === null || (typeof av === "number" && Number.isNaN(av));
+      const bMissing = bv === undefined || bv === null || (typeof bv === "number" && Number.isNaN(bv));
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      return String(av).localeCompare(String(bv)) * dir;
+    });
+    return arr;
+  }, [filtered, sortKey, sortDir, valuations, activeStatKey]);
+
+  const toggleSort = (key: SortKey, defaultDir: "asc" | "desc" = "desc") => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir(defaultDir);
+    }
+  };
+
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return null;
+    return sortDir === "asc" ? (
+      <ChevronUp className="inline h-3.5 w-3.5 ml-1" />
+    ) : (
+      <ChevronDown className="inline h-3.5 w-3.5 ml-1" />
+    );
+  };
+
+  const activeStatLabel = activeStatKey
+    ? STAT_OPTIONS.find((s) => s.key === activeStatKey)?.label
+    : null;
 
   async function handleAddPlayer() {
     if (!activeLeagueId) {
@@ -408,6 +523,28 @@ export default function PlayersPage() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="min-w-40" disabled={loading}>
+              {activeStatLabel ? `Sort by ${activeStatLabel}` : "Sort by Stat"}
+              <ChevronDown className="ml-2 h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {STAT_OPTIONS.map((opt) => (
+              <DropdownMenuItem
+                key={opt.key}
+                onClick={() => {
+                  setSortKey(`stat:${opt.key}`);
+                  setSortDir(opt.lowerIsBetter ? "asc" : "desc");
+                }}
+              >
+                {opt.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Error */}
@@ -422,10 +559,47 @@ export default function PlayersPage() {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
-              <TableHead className="font-semibold">Player</TableHead>
-              <TableHead className="font-semibold">Team</TableHead>
+              <TableHead
+                className="font-semibold cursor-pointer select-none"
+                onClick={() => toggleSort("name", "asc")}
+              >
+                Player{sortIndicator("name")}
+              </TableHead>
+              <TableHead
+                className="font-semibold cursor-pointer select-none"
+                onClick={() => toggleSort("team", "asc")}
+              >
+                Team{sortIndicator("team")}
+              </TableHead>
               <TableHead className="font-semibold">Position(s)</TableHead>
-              <TableHead className="font-semibold">Age</TableHead>
+              <TableHead
+                className="font-semibold cursor-pointer select-none"
+                onClick={() => toggleSort("age", "asc")}
+              >
+                Age{sortIndicator("age")}
+              </TableHead>
+              <TableHead
+                className="font-semibold cursor-pointer select-none"
+                onClick={() => toggleSort("value", "desc")}
+              >
+                $ Value{sortIndicator("value")}
+              </TableHead>
+              {activeStatKey && (
+                <TableHead
+                  className="font-semibold cursor-pointer select-none"
+                  onClick={() =>
+                    toggleSort(
+                      `stat:${activeStatKey}`,
+                      STAT_OPTIONS.find((s) => s.key === activeStatKey)?.lowerIsBetter
+                        ? "asc"
+                        : "desc",
+                    )
+                  }
+                >
+                  {activeStatLabel}
+                  {sortIndicator(`stat:${activeStatKey}`)}
+                </TableHead>
+              )}
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold">Risk</TableHead>
               <TableHead className="font-semibold">Depth Role</TableHead>
@@ -434,21 +608,21 @@ export default function PlayersPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-12">
+                <TableCell colSpan={activeStatKey ? 9 : 8} className="text-center py-12">
                   <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={activeStatKey ? 9 : 8}
                   className="text-center text-muted-foreground py-12"
                 >
                   No players found.
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((player: Player) => (
+              sorted.map((player: Player) => (
                 <TableRow
                   key={player.id}
                   className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -486,6 +660,24 @@ export default function PlayersPage() {
                   <TableCell className="text-muted-foreground text-sm">
                     {player.age ?? "—"}
                   </TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {valuations[player.id] !== undefined
+                      ? `$${valuations[player.id]}`
+                      : "—"}
+                  </TableCell>
+                  {activeStatKey && (
+                    <TableCell className="font-mono text-sm">
+                      {(() => {
+                        const v = getStatValue(player, activeStatKey);
+                        if (v === undefined || v === null) return "—";
+                        return activeStatKey === "avg" ||
+                          activeStatKey === "era" ||
+                          activeStatKey === "whip"
+                          ? v.toFixed(3)
+                          : v;
+                      })()}
+                    </TableCell>
+                  )}
                   <TableCell>
                     {player.injuryStatus ? (
                       <span

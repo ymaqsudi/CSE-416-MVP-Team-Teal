@@ -75,7 +75,7 @@ export async function postValuationsBatch(req: Request, res: Response): Promise<
 
 export async function getValuationsAll(req: Request, res: Response): Promise<void> {
   try {
-    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: true });
+    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false });
     if (!ctx.ok) {
       res.status(ctx.status).json({ message: ctx.message });
       return;
@@ -107,6 +107,7 @@ export async function getValuationsAll(req: Request, res: Response): Promise<voi
       }
 
       valuations.push({
+        playerId: idStr,
         mlbPlayerId: p.mlbPlayerId ?? null,
         name: p.name,
         mlbTeamId: p.mlbTeamId ?? null,
