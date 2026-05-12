@@ -95,6 +95,7 @@ export type PlayerLean = {
   bats?: string;
   throws?: string;
   depthRole?: string;
+  rosterStatus?: string;
   risk?: string;
   isEligible?: boolean;
   projGames?: number;
@@ -416,12 +417,19 @@ function computeParValues(
   const slots = rosterSlots(league);
   const slotEntries = Object.entries(slots);
   const { numTeams } = league;
-  // Exclude minor-league players from the valuation pool. They were inflating
-  // `eligible.length`, which drives the $1/player floor in Pass 4 and shrinks the
-  // distributable budget that flows to SAR-positive starters.
-  const eligible = pool.filter(
-    (p) => p.isEligible !== false && p.depthRole !== "Minors",
-  );
+  // Gate the valuation pool to MLB-roster players. Minor-leaguers and 60-day IL
+  // players inflate `eligible.length`, which drives the $1/player floor in Pass 4
+  // and shrinks the distributable budget that flows to SAR-positive starters.
+  // Players with no `rosterStatus` set (tests, legacy fixtures) are included.
+  const eligible = pool.filter((p) => {
+    if (p.isEligible === false) return false;
+    if (p.rosterStatus == null) return true;
+    return (
+      p.rosterStatus === "ActiveRoster" ||
+      p.rosterStatus === "InjuredList" ||
+      p.rosterStatus === "Bereavement"
+    );
+  });
 
   // Precompute SGP per player once — replaces ~n² calls to computePlayerSGP across the
   // assignment + replacement loops.

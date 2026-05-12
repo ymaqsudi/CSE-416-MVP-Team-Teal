@@ -67,8 +67,8 @@ function isMeaningfulPitcherStats(s: FgStats): boolean {
 const FG_BASE = "https://www.fangraphs.com/api";
 
 const FG_ENDPOINTS = {
-  proj_hitters:  `${FG_BASE}/projections?type=steamerr&stats=bat&pos=all&team=0&players=0&lg=all`,
-  proj_pitchers: `${FG_BASE}/projections?type=steamerr&stats=pit&pos=all&team=0&players=0&lg=all`,
+  proj_hitters:  `${FG_BASE}/projections?type=steamer&stats=bat&pos=all&team=0&players=0&lg=all`,
+  proj_pitchers: `${FG_BASE}/projections?type=steamer&stats=pit&pos=all&team=0&players=0&lg=all`,
   prev_hitters:  `${FG_BASE}/leaders/major-league/data?pos=all&stats=bat&lg=all&qual=0&season=2025&season1=2025&month=0&hand=&team=0&pageitems=2000&pagenum=1&type=8&ind=0`,
   prev_pitchers: `${FG_BASE}/leaders/major-league/data?pos=all&stats=pit&lg=all&qual=0&season=2025&season1=2025&month=0&hand=&team=0&pageitems=2000&pagenum=1&type=8&ind=0`,
 };
@@ -162,6 +162,7 @@ function safeInt(row: Row, ...keys: string[]): number | null {
 
 function buildHitterProj(row: Row): FgStats {
   return {
+    g:   safeInt(row, "G"),
     hr:  safeInt(row, "HR"),
     rbi: safeInt(row, "RBI"),
     r:   safeInt(row, "R"),

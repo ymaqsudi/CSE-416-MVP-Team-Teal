@@ -68,6 +68,7 @@ function toPlayer(doc: PlayerLean) {
     ...(doc.bats && { bats: doc.bats as "R" | "L" | "S" }),
     ...(doc.throws && { throws: doc.throws as "R" | "L" }),
     ...(doc.depthRole && { depthRole: doc.depthRole }),
+    ...(doc.rosterStatus && { rosterStatus: doc.rosterStatus }),
     ...(doc.risk && { risk: doc.risk as "Low" | "Med" | "High" }),
     ...(doc.age != null && { age: doc.age }),
     ...(doc.injuryStatus != null && { injuryStatus: doc.injuryStatus }),

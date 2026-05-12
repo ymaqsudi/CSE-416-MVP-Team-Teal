@@ -61,7 +61,16 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function mapDepthRole(description: string): "Starter" | "Minors" {
+type RosterStatusValue =
+  | "ActiveRoster"
+  | "InjuredList"
+  | "InjuredList60"
+  | "Bereavement"
+  | "MinorLeague"
+  | "NotOnRoster"
+  | "Unknown";
+
+function mapRosterStatus(description: string): RosterStatusValue {
   const d = description.toLowerCase();
   if (
     d.includes("minor league") ||
@@ -71,9 +80,26 @@ function mapDepthRole(description: string): "Starter" | "Minors" {
     d.includes("optioned") ||
     d.includes("assigned to minors")
   ) {
-    return "Minors";
+    return "MinorLeague";
   }
-  return "Starter";
+  if (d.includes("60-day")) return "InjuredList60";
+  if (
+    d.includes("7-day") ||
+    d.includes("10-day") ||
+    d.includes("15-day") ||
+    d.includes("day-to-day")
+  ) {
+    return "InjuredList";
+  }
+  if (
+    d.includes("bereavement") ||
+    d.includes("paternity") ||
+    d.includes("family medical")
+  ) {
+    return "Bereavement";
+  }
+  if (d.includes("restricted") || d.includes("suspend")) return "NotOnRoster";
+  return "ActiveRoster";
 }
 
 function mapInjuryStatus(description: string): InjuryStatusValue {
@@ -109,6 +135,41 @@ function riskFromInjury(status: InjuryStatusValue): "Low" | "Med" | "High" {
   if (status === "Active") return "Low";
   if (status === "Day-to-Day") return "Med";
   return "High";
+}
+
+type DepthRoleValue = "Starter" | "Backup" | "Platoon" | "Bench" | "Unknown";
+
+function deriveDepthRole(fg: FgPlayer | undefined): DepthRoleValue {
+  if (!fg) return "Unknown";
+
+  let role: DepthRoleValue = "Unknown";
+
+  if (fg.isHitter && fg.projHittingStats) {
+    const g = Number(fg.projHittingStats.g ?? 0);
+    if (g >= 130) role = "Starter";
+    else if (g >= 100) role = "Platoon";
+    else if (g >= 50) role = "Backup";
+    else if (g > 0) role = "Bench";
+  }
+
+  if (fg.isPitcher && fg.projPitchingStats) {
+    const ip = Number(fg.projPitchingStats.ip ?? 0);
+    const sv = Number(fg.projPitchingStats.sv ?? 0);
+    let pitcherRole: DepthRoleValue = "Unknown";
+    if (sv >= 15 || ip >= 140) pitcherRole = "Starter";
+    else if (ip >= 80 || sv >= 5) pitcherRole = "Backup";
+    else if (ip > 0) pitcherRole = "Bench";
+    role = upgradeRole(role, pitcherRole);
+  }
+
+  return role;
+}
+
+function upgradeRole(a: DepthRoleValue, b: DepthRoleValue): DepthRoleValue {
+  const rank: Record<DepthRoleValue, number> = {
+    Starter: 4, Platoon: 3, Backup: 2, Bench: 1, Unknown: 0,
+  };
+  return rank[a] >= rank[b] ? a : b;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +326,8 @@ function buildPlayerDoc(
     name: fg?.name ?? `Player ${mlbamId}`,
     mlbTeam: roster.teamAbbr,
     positions: [...positions],
-    depthRole: mapDepthRole(roster.statusDesc),
+    depthRole: deriveDepthRole(fg),
+    rosterStatus: mapRosterStatus(roster.statusDesc),
     risk: riskFromInjury(injuryStatus),
     isEligible: true,
     projGames: injuryStatus === "60-Day IL" || injuryStatus === "Out for Season" ? 100 : 162,

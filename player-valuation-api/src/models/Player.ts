@@ -13,7 +13,20 @@ const playerSchema = new mongoose.Schema(
     throws: { type: String, enum: ["R", "L"], default: null },
     depthRole: {
       type: String,
-      enum: ["Starter", "Backup", "Platoon", "Bench", "Minors", "Unknown"],
+      enum: ["Starter", "Backup", "Platoon", "Bench", "Unknown"],
+      default: "Unknown",
+    },
+    rosterStatus: {
+      type: String,
+      enum: [
+        "ActiveRoster",
+        "InjuredList",
+        "InjuredList60",
+        "Bereavement",
+        "MinorLeague",
+        "NotOnRoster",
+        "Unknown",
+      ],
       default: "Unknown",
     },
     risk: { type: String, enum: ["Low", "Med", "High"], default: "Med" },
