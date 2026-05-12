@@ -48,5 +48,6 @@ export async function valuationMapFor(
   const all = (await PlayerModel.find({}).lean().exec()) as PlayerLean[];
   const pool = undraftedPlayers(all, draft.picks ?? []);
   const rem = remainingAuctionDollars(league, draft);
-  return valuePool(pool, league, rem);
+  // Pass the full pool so static-par + inflation kicks in once picks have happened.
+  return valuePool(pool, league, rem, { fullPool: all });
 }
