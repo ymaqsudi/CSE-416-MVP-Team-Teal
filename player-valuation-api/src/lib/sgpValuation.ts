@@ -351,49 +351,20 @@ function eligibleAt(p: PlayerLean, slot: string): boolean {
 /**
  * Replacement SGP at one position: SGP of the (N_teams * slots + 1)th best among `pool`, descending.
  * `pool` should already be filtered to players eligible at `pos` (caller's responsibility).
+ * `sgpByPlayer` must contain an entry for every player in `poolAtPos`.
  */
 function replacementSGPFromPool(
   poolAtPos: PlayerLean[],
+  sgpByPlayer: Map<string, number>,
   numTeams: number,
-  slotsAtPos: number
+  slotsAtPos: number,
 ): number {
   if (poolAtPos.length === 0) return 0;
-  const ranked = [...poolAtPos].sort(
-    (a, b) => computePlayerSGP(b, numTeams) - computePlayerSGP(a, numTeams),
-  );
+  const sgpOf = (p: PlayerLean) => sgpByPlayer.get(String(p._id)) ?? 0;
+  const ranked = [...poolAtPos].sort((a, b) => sgpOf(b) - sgpOf(a));
   const idx = numTeams * slotsAtPos; // 0-based → (idx) is the replacement-tier player
-  if (idx >= ranked.length) return computePlayerSGP(ranked[ranked.length - 1], numTeams);
-  return computePlayerSGP(ranked[idx], numTeams);
-}
-
-/**
- * Pick the position (from those the player is eligible for AND that the league has slots for)
- * where this player has the highest SAR against the *full* eligibility pool. This is the
- * preferred-assignment heuristic used to partition multi-position players into a single pool.
- */
-function preferredAssignment(
-  player: PlayerLean,
-  fullPool: PlayerLean[],
-  league: LeagueConfig
-): { bestPosition?: string; sgp: number } {
-  const slots = rosterSlots(league);
-  const { numTeams } = league;
-  const sgp = computePlayerSGP(player, numTeams);
-  let best = -Infinity;
-  let bestPosition: string | undefined;
-  // Iterate slots (not player.positions) so flex slots (CI/MI/UTIL) are considered for any
-  // player whose positions satisfy the slot's eligibility rule.
-  for (const [slot, slotCount] of Object.entries(slots)) {
-    if (!eligibleAt(player, slot)) continue;
-    const eligible = fullPool.filter((p) => eligibleAt(p, slot));
-    const rep = replacementSGPFromPool(eligible, numTeams, slotCount);
-    const sar = sgp - rep;
-    if (sar > best) {
-      best = sar;
-      bestPosition = slot;
-    }
-  }
-  return { bestPosition, sgp };
+  if (idx >= ranked.length) return sgpOf(ranked[ranked.length - 1]);
+  return sgpOf(ranked[idx]);
 }
 
 export type ValuationBreakdown = {
@@ -443,24 +414,55 @@ function computeParValues(
   budget: number,
 ): Map<string, ParEntry> {
   const slots = rosterSlots(league);
+  const slotEntries = Object.entries(slots);
   const { numTeams } = league;
   const eligible = pool.filter((p) => p.isEligible !== false);
 
-  // Pass 1: greedy single-position assignment.
+  // Precompute SGP per player once — replaces ~n² calls to computePlayerSGP across the
+  // assignment + replacement loops.
+  const sgpByPlayer = new Map<string, number>();
+  for (const p of eligible) {
+    sgpByPlayer.set(String(p._id), computePlayerSGP(p, numTeams));
+  }
+
+  // Precompute the pre-assignment replacement level for each slot, once. Each slot's pool
+  // is the full eligible set filtered by slot eligibility — the same view the old per-player
+  // preferredAssignment recomputed for every player.
+  const preReplacementBySlot = new Map<string, number>();
+  for (const [slot, slotCount] of slotEntries) {
+    const poolAtSlot = eligible.filter((p) => eligibleAt(p, slot));
+    preReplacementBySlot.set(
+      slot,
+      replacementSGPFromPool(poolAtSlot, sgpByPlayer, numTeams, slotCount),
+    );
+  }
+
+  // Pass 1: greedy single-position assignment. Per-player work is now O(slots), not O(n·log n).
   const assignments = new Map<string, { p: PlayerLean; sgp: number; bestPosition?: string }>();
   const partitioned: Record<string, PlayerLean[]> = {};
   for (const p of eligible) {
-    const { bestPosition, sgp } = preferredAssignment(p, eligible, league);
+    const sgp = sgpByPlayer.get(String(p._id)) ?? 0;
+    let bestSar = -Infinity;
+    let bestPosition: string | undefined;
+    for (const [slot] of slotEntries) {
+      if (!eligibleAt(p, slot)) continue;
+      const rep = preReplacementBySlot.get(slot) ?? 0;
+      const sar = sgp - rep;
+      if (sar > bestSar) {
+        bestSar = sar;
+        bestPosition = slot;
+      }
+    }
     assignments.set(String(p._id), { p, sgp, bestPosition });
     if (bestPosition) (partitioned[bestPosition] ??= []).push(p);
   }
 
-  // Pass 2: replacement per position from the partitioned pool.
+  // Pass 2: replacement per position from the partitioned (post-assignment) pool.
   const replacementByPos = new Map<string, number>();
-  for (const [pos, slotCount] of Object.entries(slots)) {
+  for (const [pos, slotCount] of slotEntries) {
     replacementByPos.set(
       pos,
-      replacementSGPFromPool(partitioned[pos] ?? [], numTeams, slotCount),
+      replacementSGPFromPool(partitioned[pos] ?? [], sgpByPlayer, numTeams, slotCount),
     );
   }
 
