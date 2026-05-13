@@ -16,8 +16,20 @@ export interface ILeague extends Document {
   teams: ITeam[];
   myTeamId: string;
   scope: "MLB" | "AL" | "NL";
+  rosterSlots: Record<string, number>;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export const SUPPORTED_ROSTER_SLOTS = [
+  "C", "1B", "2B", "3B", "SS", "CI", "MI", "OF", "UTIL", "P",
+] as const;
+
+export function defaultRosterSlots(): Record<string, number> {
+  return {
+    C: 2, "1B": 1, "2B": 1, "3B": 1, SS: 1,
+    CI: 1, MI: 1, OF: 5, UTIL: 1, P: 9,
+  };
 }
 
 const TeamSchema = new Schema<ITeam>(
@@ -81,11 +93,25 @@ const LeagueSchema = new Schema<ILeague>(
       default: "MLB",
       required: true,
     },
+    rosterSlots: {
+      type: Schema.Types.Mixed,
+      default: () => defaultRosterSlots(),
+    },
   },
   {
     timestamps: true,
   }
 );
+
+LeagueSchema.pre("save", function (next) {
+  const slots = (this.rosterSlots ?? {}) as Record<string, number>;
+  const total = Object.values(slots).reduce(
+    (sum, n) => sum + (Number.isFinite(Number(n)) ? Number(n) : 0),
+    0,
+  );
+  if (total > 0) this.mainRosterSlots = total;
+  next();
+});
 
 export const League: Model<ILeague> =
   mongoose.models.League || mongoose.model<ILeague>("League", LeagueSchema);

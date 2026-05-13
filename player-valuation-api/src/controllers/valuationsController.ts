@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { leagueDraftFromQuery, valuationMapFor, parseMlbLeague, parseCategories, filterPoolByLeague } from "../services/valuationContext.js";
+import { leagueDraftFromQuery, valuationMapFor, parseMlbLeague, parseCategories, parseRosterSlots, filterPoolByLeague } from "../services/valuationContext.js";
 import {
   undraftedPlayers,
   playerIdString,
@@ -10,7 +10,7 @@ import { parsePlayerRef, findPlayerByParsedRef } from "../lib/resolvePlayer.js";
 
 export async function postValuationsBatch(req: Request, res: Response): Promise<void> {
   try {
-    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: true, mlbLeague: parseMlbLeague(req.query.mlbLeague), categories: parseCategories(req.query.categories) });
+    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: true, mlbLeague: parseMlbLeague(req.query.mlbLeague), categories: parseCategories(req.query.categories), rosterSlotsPerTeam: parseRosterSlots(req.query.rosterSlots) });
     if (!ctx.ok) {
       res.status(ctx.status).json({ message: ctx.message });
       return;
@@ -75,7 +75,7 @@ export async function postValuationsBatch(req: Request, res: Response): Promise<
 
 export async function getValuationsAll(req: Request, res: Response): Promise<void> {
   try {
-    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false, mlbLeague: parseMlbLeague(req.query.mlbLeague), categories: parseCategories(req.query.categories) });
+    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false, mlbLeague: parseMlbLeague(req.query.mlbLeague), categories: parseCategories(req.query.categories), rosterSlotsPerTeam: parseRosterSlots(req.query.rosterSlots) });
     if (!ctx.ok) {
       res.status(ctx.status).json({ message: ctx.message });
       return;

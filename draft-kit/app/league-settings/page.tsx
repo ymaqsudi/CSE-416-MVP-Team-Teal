@@ -32,6 +32,14 @@ type League = {
   teams?: Team[];
   myTeamId?: string;
   scope?: "MLB" | "AL" | "NL";
+  rosterSlots?: Record<string, number>;
+};
+
+const HITTER_SLOTS = ["C", "1B", "2B", "3B", "SS", "CI", "MI", "OF", "UTIL"] as const;
+const PITCHER_SLOTS = ["P"] as const;
+const DEFAULT_ROSTER_SLOTS: Record<string, number> = {
+  C: 2, "1B": 1, "2B": 1, "3B": 1, SS: 1,
+  CI: 1, MI: 1, OF: 5, UTIL: 1, P: 9,
 };
 
 export default function LeagueSettingsPage() {
@@ -41,7 +49,6 @@ export default function LeagueSettingsPage() {
   const [leagueName, setLeagueName] = useState("");
   const [teamCount, setTeamCount] = useState("12");
   const [budget, setBudget] = useState("260");
-  const [mainRosterSlots, setMainRosterSlots] = useState("23");
   const [scoringType, setScoringType] = useState("rotisserie");
   const HITTER_CATS = ["HR", "RBI", "R", "SB", "AVG"] as const;
   const PITCHER_CATS = ["W", "ERA", "WHIP", "K", "SV"] as const;
@@ -52,6 +59,8 @@ export default function LeagueSettingsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeamId, setMyTeamId] = useState<string>("");
   const [scope, setScope] = useState<"MLB" | "AL" | "NL">("MLB");
+  const [rosterSlots, setRosterSlots] = useState<Record<string, number>>({ ...DEFAULT_ROSTER_SLOTS });
+  const rosterTotal = Object.values(rosterSlots).reduce((s, n) => s + (Number(n) || 0), 0);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -99,7 +108,6 @@ export default function LeagueSettingsPage() {
           setLeagueName(existingLeague.leagueName);
           setTeamCount(String(existingLeague.teamCount));
           setBudget(String(existingLeague.budget));
-          setMainRosterSlots(String(existingLeague.mainRosterSlots ?? 23));
           setScoringType(existingLeague.scoringType);
           setCategories(
             existingLeague.categories && existingLeague.categories.length > 0
@@ -109,6 +117,11 @@ export default function LeagueSettingsPage() {
           setTeams(existingLeague.teams ?? []);
           setMyTeamId(existingLeague.myTeamId ?? "");
           setScope(existingLeague.scope ?? "MLB");
+          setRosterSlots(
+            existingLeague.rosterSlots && Object.keys(existingLeague.rosterSlots).length > 0
+              ? { ...DEFAULT_ROSTER_SLOTS, ...existingLeague.rosterSlots }
+              : { ...DEFAULT_ROSTER_SLOTS },
+          );
         }
       } catch (err) {
         console.error("Load league settings error:", err);
@@ -127,12 +140,12 @@ export default function LeagueSettingsPage() {
     setLeagueName("");
     setTeamCount("12");
     setBudget("260");
-    setMainRosterSlots("23");
     setScoringType("rotisserie");
     setCategories([...HITTER_CATS, ...PITCHER_CATS]);
     setTeams([]);
     setMyTeamId("");
     setScope("MLB");
+    setRosterSlots({ ...DEFAULT_ROSTER_SLOTS });
     setError("");
     setSuccess("");
     localStorage.removeItem("draftkit_leagueId");
@@ -154,7 +167,9 @@ export default function LeagueSettingsPage() {
     const trimmedLeagueName = leagueName.trim();
     const parsedTeamCount = Number(teamCount);
     const parsedBudget = Number(budget);
-    const parsedMainRosterSlots = Number(mainRosterSlots);
+    const parsedMainRosterSlots = rosterTotal;
+    const hitterSlotTotal = HITTER_SLOTS.reduce((s, k) => s + (Number(rosterSlots[k]) || 0), 0);
+    const pitcherSlotTotal = PITCHER_SLOTS.reduce((s, k) => s + (Number(rosterSlots[k]) || 0), 0);
     const parsedCategories = categories;
     const hasHitterCat = parsedCategories.some((c) => (HITTER_CATS as readonly string[]).includes(c));
     const hasPitcherCat = parsedCategories.some((c) => (PITCHER_CATS as readonly string[]).includes(c));
@@ -175,7 +190,12 @@ export default function LeagueSettingsPage() {
     }
     
     if (!parsedMainRosterSlots || parsedMainRosterSlots < 1) {
-      setError("Main roster slots must be at least 1.");
+      setError("Total roster slots must be at least 1.");
+      return;
+    }
+
+    if (hitterSlotTotal < 1 || pitcherSlotTotal < 1) {
+      setError("Roster must include at least one hitter slot and one pitcher slot.");
       return;
     }
 
@@ -206,6 +226,7 @@ export default function LeagueSettingsPage() {
           teams,
           myTeamId,
           scope,
+          rosterSlots,
         }),
       });
 
@@ -350,17 +371,59 @@ export default function LeagueSettingsPage() {
           
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
-              Main Roster Slots
+              Roster Positions
             </label>
-            <Input
-              type="number"
-              value={mainRosterSlots}
-              onChange={(e) => setMainRosterSlots(e.target.value)}
-              disabled={isLoading}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase">
+                  Hitters
+                </p>
+                {HITTER_SLOTS.map((slot) => (
+                  <div key={slot} className="flex items-center gap-2">
+                    <span className="text-xs font-mono w-12 shrink-0">{slot}</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={String(rosterSlots[slot] ?? 0)}
+                      onChange={(e) =>
+                        setRosterSlots((prev) => ({
+                          ...prev,
+                          [slot]: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        }))
+                      }
+                      disabled={isLoading}
+                      className="h-8"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase">
+                  Pitchers
+                </p>
+                {PITCHER_SLOTS.map((slot) => (
+                  <div key={slot} className="flex items-center gap-2">
+                    <span className="text-xs font-mono w-12 shrink-0">{slot}</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={String(rosterSlots[slot] ?? 0)}
+                      onChange={(e) =>
+                        setRosterSlots((prev) => ({
+                          ...prev,
+                          [slot]: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                        }))
+                      }
+                      disabled={isLoading}
+                      className="h-8"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Default is 23. This controls when a team is considered full for
-              the main roster.
+              Total roster size: <span className="font-medium">{rosterTotal}</span>{" "}
+              (CI = 1B/3B, MI = 2B/SS, UTIL = any non-pitcher).
             </p>
           </div>
 

@@ -2,7 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
-import { League } from "@/lib/models/League";
+import { League, SUPPORTED_ROSTER_SLOTS, defaultRosterSlots } from "@/lib/models/League";
+
+function normalizeRosterSlots(raw: unknown): Record<string, number> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const out: Record<string, number> = {};
+  for (const key of SUPPORTED_ROSTER_SLOTS) {
+    const v = (raw as Record<string, unknown>)[key];
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) continue;
+    out[key] = Math.floor(n);
+  }
+  const total = Object.values(out).reduce((s, n) => s + n, 0);
+  return total > 0 ? out : null;
+}
 
 function makeDefaultTeams(count: number): { id: string; name: string }[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -61,8 +74,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { leagueName, teamCount, budget, mainRosterSlots, scoringType, categories, scope } = body;
+    const { leagueName, teamCount, budget, mainRosterSlots, scoringType, categories, scope, rosterSlots } = body;
     const normalizedScope = scope === "AL" || scope === "NL" ? scope : "MLB";
+    const normalizedRosterSlots = normalizeRosterSlots(rosterSlots) ?? defaultRosterSlots();
+    const derivedMainRosterSlots = Object.values(normalizedRosterSlots).reduce(
+      (s, n) => s + n,
+      0,
+    );
     const SUPPORTED_CATS = new Set(["HR", "RBI", "R", "SB", "AVG", "W", "ERA", "WHIP", "K", "SV"]);
     const normalizedCategories = Array.isArray(categories)
       ? categories
@@ -85,12 +103,13 @@ export async function POST(request: NextRequest) {
       leagueName: String(leagueName).trim(),
       teamCount: Number(teamCount),
       budget: Number(budget),
-      mainRosterSlots: Number(mainRosterSlots) || 23,
+      mainRosterSlots: derivedMainRosterSlots || Number(mainRosterSlots) || 23,
       scoringType: scoringType ? String(scoringType) : "rotisserie",
       categories: normalizedCategories,
       teams: seededTeams,
       myTeamId: seededTeams[0]?.id ?? "",
       scope: normalizedScope,
+      rosterSlots: normalizedRosterSlots,
     });
 
     return NextResponse.json(

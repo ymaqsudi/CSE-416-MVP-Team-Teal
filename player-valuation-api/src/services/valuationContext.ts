@@ -17,6 +17,21 @@ export function parseMlbLeague(value: unknown): "AL" | "NL" | undefined {
 }
 
 const ALL_CATS = new Set(["HR", "RBI", "R", "SB", "AVG", "W", "ERA", "WHIP", "K", "SV"]);
+const ALL_SLOTS = new Set(["C", "1B", "2B", "3B", "SS", "CI", "MI", "OF", "UTIL", "P"]);
+
+export function parseRosterSlots(value: unknown): Record<string, number> | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const out: Record<string, number> = {};
+  for (const part of value.split(",")) {
+    const [rawKey, rawVal] = part.split(":");
+    const key = rawKey?.trim().toUpperCase();
+    const n = Number(rawVal);
+    if (!key || !ALL_SLOTS.has(key)) continue;
+    if (!Number.isFinite(n) || n < 0) continue;
+    out[key] = Math.floor(n);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 export function parseCategories(value: unknown): string[] | undefined {
   if (typeof value !== "string" || !value.trim()) return undefined;
@@ -29,7 +44,7 @@ export function parseCategories(value: unknown): string[] | undefined {
 
 export async function leagueDraftFromQuery(
   sessionId: unknown,
-  opts: { requireSession: boolean; mlbLeague?: "AL" | "NL"; categories?: string[] }
+  opts: { requireSession: boolean; mlbLeague?: "AL" | "NL"; categories?: string[]; rosterSlotsPerTeam?: Record<string, number> }
 ): Promise<
   | { ok: true; league: LeagueConfig; draft: DraftStateInput }
   | { ok: false; status: number; message: string }
@@ -42,7 +57,12 @@ export async function leagueDraftFromQuery(
     }
     return {
       ok: true,
-      league: { ...DEFAULT_DISPLAY_LEAGUE, mlbLeague: opts.mlbLeague, categories: opts.categories },
+      league: {
+        ...DEFAULT_DISPLAY_LEAGUE,
+        mlbLeague: opts.mlbLeague,
+        categories: opts.categories,
+        rosterSlotsPerTeam: opts.rosterSlotsPerTeam,
+      },
       draft: { picks: [] },
     };
   }
@@ -58,6 +78,7 @@ export async function leagueDraftFromQuery(
       ...sessionLeague,
       mlbLeague: opts.mlbLeague ?? sessionLeague.mlbLeague,
       categories: opts.categories ?? sessionLeague.categories,
+      rosterSlotsPerTeam: opts.rosterSlotsPerTeam ?? sessionLeague.rosterSlotsPerTeam,
     },
     draft: {
       picks: draft.picks ?? [],

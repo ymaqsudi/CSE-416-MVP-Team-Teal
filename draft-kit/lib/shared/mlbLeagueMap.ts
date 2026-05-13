@@ -24,3 +24,11 @@ export function filterPlayersByScope<T extends { mlbTeam?: string }>(
   if (scope === "MLB") return players;
   return players.filter((p) => isTeamInScope(p.mlbTeam, scope));
 }
+
+export function encodeRosterSlots(slots: Record<string, number> | undefined | null): string {
+  if (!slots) return "";
+  return Object.entries(slots)
+    .filter(([, n]) => Number(n) > 0)
+    .map(([k, n]) => `${k}:${n}`)
+    .join(",");
+}

@@ -30,7 +30,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { filterPlayersByScope, type LeagueScope } from "@/lib/shared/mlbLeagueMap";
+import { filterPlayersByScope, encodeRosterSlots, type LeagueScope } from "@/lib/shared/mlbLeagueMap";
 
 
 
@@ -104,6 +104,7 @@ export default function PlayersPage() {
   const [activeLeagueId, setActiveLeagueId] = useState<string>("");
   const [leagueScope, setLeagueScope] = useState<LeagueScope>("MLB");
   const [leagueCategories, setLeagueCategories] = useState<string[]>([]);
+  const [leagueRosterSlots, setLeagueRosterSlots] = useState<Record<string, number> | null>(null);
   const [customPlayers, setCustomPlayers] = useState<Player[]>([]);
   const [showAddPlayerDialog, setShowAddPlayerDialog] = useState(false);
   const [addPlayerLoading, setAddPlayerLoading] = useState(false);
@@ -141,6 +142,8 @@ export default function PlayersPage() {
         const params = new URLSearchParams();
         if (leagueScope !== "MLB") params.set("mlbLeague", leagueScope);
         if (leagueCategories.length > 0) params.set("categories", leagueCategories.join(","));
+        const encodedSlots = encodeRosterSlots(leagueRosterSlots);
+        if (encodedSlots) params.set("rosterSlots", encodedSlots);
         const qs = params.toString() ? `?${params.toString()}` : "";
         const res = await fetch(`/api/valuation/valuations/all${qs}`);
         if (!res.ok) return;
@@ -155,7 +158,7 @@ export default function PlayersPage() {
       }
     }
     fetchValuations();
-  }, [leagueScope, leagueCategories]);
+  }, [leagueScope, leagueCategories, leagueRosterSlots]);
 
   useEffect(() => {
     const storedLeagueId = localStorage.getItem("draftkit_leagueId");
@@ -176,13 +179,16 @@ export default function PlayersPage() {
         if (!res.ok) return;
         const data = await res.json();
         const league =
-          (data.leagues ?? []).find((l: { _id: string }) => l._id === leagueId) ??
+          (data.leagues ?? []).find((l: { _id: string; rosterSlots?: Record<string, number> }) => l._id === leagueId) ??
           data.leagues?.[0];
         if (league?.scope === "AL" || league?.scope === "NL" || league?.scope === "MLB") {
           setLeagueScope(league.scope);
         }
         if (Array.isArray(league?.categories)) {
           setLeagueCategories(league.categories);
+        }
+        if (league?.rosterSlots && typeof league.rosterSlots === "object") {
+          setLeagueRosterSlots(league.rosterSlots);
         }
       } catch (e) {
         console.error("Failed to load league scope:", e);

@@ -2,7 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
-import { League } from "@/lib/models/League";
+import { League, SUPPORTED_ROSTER_SLOTS } from "@/lib/models/League";
+
+function normalizeRosterSlots(raw: unknown): Record<string, number> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const out: Record<string, number> = {};
+  for (const key of SUPPORTED_ROSTER_SLOTS) {
+    const v = (raw as Record<string, unknown>)[key];
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) continue;
+    out[key] = Math.floor(n);
+  }
+  const total = Object.values(out).reduce((s, n) => s + n, 0);
+  return total > 0 ? out : null;
+}
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -69,6 +82,7 @@ export async function PATCH(
       teams: incomingTeams,
       myTeamId: incomingMyTeamId,
       scope,
+      rosterSlots,
     } = body;
 
     if (!leagueName || !teamCount || !budget) {
@@ -115,7 +129,16 @@ export async function PATCH(
     league.leagueName = String(leagueName).trim();
     league.teamCount = nextTeamCount;
     league.budget = Number(budget);
-    league.mainRosterSlots = Number(mainRosterSlots) || 23;
+    const normalizedRosterSlots = normalizeRosterSlots(rosterSlots);
+    if (normalizedRosterSlots) {
+      league.rosterSlots = normalizedRosterSlots;
+      league.mainRosterSlots = Object.values(normalizedRosterSlots).reduce(
+        (s, n) => s + n,
+        0,
+      );
+    } else {
+      league.mainRosterSlots = Number(mainRosterSlots) || league.mainRosterSlots || 23;
+    }
     league.scoringType = scoringType ? String(scoringType) : "rotisserie";
     const SUPPORTED_CATS = new Set(["HR", "RBI", "R", "SB", "AVG", "W", "ERA", "WHIP", "K", "SV"]);
     league.categories = Array.isArray(categories)

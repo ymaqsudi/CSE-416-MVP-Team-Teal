@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { PlayerModel } from "../models/Player.js";
 import { findPlayerByRequestId } from "../lib/resolvePlayer.js";
-import { leagueDraftFromQuery, valuationMapFor, parseMlbLeague, parseCategories } from "../services/valuationContext.js";
+import { leagueDraftFromQuery, valuationMapFor, parseMlbLeague, parseCategories, parseRosterSlots } from "../services/valuationContext.js";
 import { MLB_LEAGUE_BY_TEAM } from "../lib/mlbLeagueMap.js";
 import {
   isPlayerDrafted,
@@ -144,7 +144,7 @@ export async function getValuation(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false, mlbLeague: parseMlbLeague(req.query.mlbLeague), categories: parseCategories(req.query.categories) });
+    const ctx = await leagueDraftFromQuery(req.query.sessionId, { requireSession: false, mlbLeague: parseMlbLeague(req.query.mlbLeague), categories: parseCategories(req.query.categories), rosterSlotsPerTeam: parseRosterSlots(req.query.rosterSlots) });
     if (!ctx.ok) {
       res.status(ctx.status).json({ message: ctx.message });
       return;
