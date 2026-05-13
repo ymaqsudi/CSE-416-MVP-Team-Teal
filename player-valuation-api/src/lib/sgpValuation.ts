@@ -71,7 +71,25 @@ export type LeagueConfig = {
   scoring?: string;
   rosterSlotsPerTeam?: Record<string, number>;
   mlbLeague?: "AL" | "NL";
+  /** Active categories; undefined or empty means all 10 5x5 cats. */
+  categories?: string[];
 };
+
+export const SUPPORTED_HITTER_CATS = ["HR", "RBI", "R", "SB", "AVG"] as const;
+export const SUPPORTED_PITCHER_CATS = ["W", "ERA", "WHIP", "K", "SV"] as const;
+export const SUPPORTED_CATEGORIES = [
+  ...SUPPORTED_HITTER_CATS,
+  ...SUPPORTED_PITCHER_CATS,
+] as const;
+
+export type CategorySet = ReadonlySet<string>;
+
+export function categorySet(categories: string[] | undefined): CategorySet {
+  if (!categories || categories.length === 0) {
+    return new Set<string>(SUPPORTED_CATEGORIES);
+  }
+  return new Set(categories.map((c) => c.toUpperCase()));
+}
 
 export type DraftPickInput = {
   mlbPlayerId?: number;
@@ -234,34 +252,35 @@ export function riskMultiplier(p: PlayerLean): number {
   return mult;
 }
 
-function hitterSGP(p: PlayerLean, denom: Denominators): number {
+function hitterSGP(p: PlayerLean, denom: Denominators, cats: CategorySet): number {
   const avail = hitterAvailability(p);
-  const hr = (p.projHR ?? 0) * avail;
-  const rbi = (p.projRBI ?? 0) * avail;
-  const r = (p.projR ?? 0) * avail;
-  const sb = (p.projSB ?? 0) * avail;
-  const avg = blendRate(p.projAVG, p.xba, LEAGUE_AVG_BA);
-  const sgpHR = hr / denom.HR;
-  const sgpRBI = rbi / denom.RBI;
-  const sgpR = r / denom.R;
-  const sgpSB = sb / denom.SB;
-  const sgpAVG = (avg - LEAGUE_AVG_BA) / denom.AVG;
-  return Math.max(0, sgpHR + sgpRBI + sgpR + sgpSB + sgpAVG);
+  let total = 0;
+  if (cats.has("HR")) total += ((p.projHR ?? 0) * avail) / denom.HR;
+  if (cats.has("RBI")) total += ((p.projRBI ?? 0) * avail) / denom.RBI;
+  if (cats.has("R")) total += ((p.projR ?? 0) * avail) / denom.R;
+  if (cats.has("SB")) total += ((p.projSB ?? 0) * avail) / denom.SB;
+  if (cats.has("AVG")) {
+    const avg = blendRate(p.projAVG, p.xba, LEAGUE_AVG_BA);
+    total += (avg - LEAGUE_AVG_BA) / denom.AVG;
+  }
+  return Math.max(0, total);
 }
 
-function pitcherSGP(p: PlayerLean, denom: Denominators): number {
+function pitcherSGP(p: PlayerLean, denom: Denominators, cats: CategorySet): number {
   const avail = pitcherAvailability(p);
-  const w = (p.projW ?? 0) * avail;
-  const k = (p.projK ?? 0) * avail;
-  const sv = (p.projSV ?? 0) * avail;
-  const era = blendRate(p.projERA, p.xera, LEAGUE_AVG_ERA);
-  const whip = p.projWHIP ?? LEAGUE_AVG_WHIP;
-  const sgpW = w / denom.W;
-  const sgpK = k / denom.K;
-  const sgpSV = sv / denom.SV;
-  const sgpERA = (LEAGUE_AVG_ERA - era) / denom.ERA;
-  const sgpWHIP = (LEAGUE_AVG_WHIP - whip) / denom.WHIP;
-  return Math.max(0, sgpW + sgpK + sgpSV + sgpERA + sgpWHIP);
+  let total = 0;
+  if (cats.has("W")) total += ((p.projW ?? 0) * avail) / denom.W;
+  if (cats.has("K")) total += ((p.projK ?? 0) * avail) / denom.K;
+  if (cats.has("SV")) total += ((p.projSV ?? 0) * avail) / denom.SV;
+  if (cats.has("ERA")) {
+    const era = blendRate(p.projERA, p.xera, LEAGUE_AVG_ERA);
+    total += (LEAGUE_AVG_ERA - era) / denom.ERA;
+  }
+  if (cats.has("WHIP")) {
+    const whip = p.projWHIP ?? LEAGUE_AVG_WHIP;
+    total += (LEAGUE_AVG_WHIP - whip) / denom.WHIP;
+  }
+  return Math.max(0, total);
 }
 
 function hasHitterStats(p: PlayerLean): boolean {
@@ -277,16 +296,21 @@ function hasPitcherStats(p: PlayerLean): boolean {
  * have their hitter and pitcher SGP summed; pure pitchers/hitters get one branch only.
  * Depth/role is intentionally NOT applied — projections already reflect role.
  */
-export function computePlayerSGP(p: PlayerLean, numTeams = 12): number {
+export function computePlayerSGP(
+  p: PlayerLean,
+  numTeams = 12,
+  categories?: string[],
+): number {
   const denom = getDenominators(numTeams);
+  const cats = categorySet(categories);
   let total = 0;
-  if (isPitcher(p) && hasPitcherStats(p)) total += pitcherSGP(p, denom);
-  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) total += hitterSGP(p, denom);
+  if (isPitcher(p) && hasPitcherStats(p)) total += pitcherSGP(p, denom, cats);
+  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) total += hitterSGP(p, denom, cats);
   // Fallback: positions array is pitcher-only but no pitcher stats present → treat as hitter
   // if hitter stats exist, else 0. Keeps legacy single-position synthetic fixtures working.
   if (total === 0) {
-    if (hasHitterStats(p)) total = hitterSGP(p, denom);
-    else if (hasPitcherStats(p)) total = pitcherSGP(p, denom);
+    if (hasHitterStats(p)) total = hitterSGP(p, denom, cats);
+    else if (hasPitcherStats(p)) total = pitcherSGP(p, denom, cats);
   }
   return total * riskMultiplier(p);
 }
@@ -436,7 +460,7 @@ function computeParValues(
   // assignment + replacement loops.
   const sgpByPlayer = new Map<string, number>();
   for (const p of eligible) {
-    sgpByPlayer.set(String(p._id), computePlayerSGP(p, numTeams));
+    sgpByPlayer.set(String(p._id), computePlayerSGP(p, numTeams, league.categories));
   }
 
   // Precompute the pre-assignment replacement level for each slot, once. Each slot's pool

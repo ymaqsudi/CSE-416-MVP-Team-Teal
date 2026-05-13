@@ -43,7 +43,12 @@ export default function LeagueSettingsPage() {
   const [budget, setBudget] = useState("260");
   const [mainRosterSlots, setMainRosterSlots] = useState("23");
   const [scoringType, setScoringType] = useState("rotisserie");
-  const [categories, setCategories] = useState("HR,RBI,R,SB,AVG");
+  const HITTER_CATS = ["HR", "RBI", "R", "SB", "AVG"] as const;
+  const PITCHER_CATS = ["W", "ERA", "WHIP", "K", "SV"] as const;
+  const [categories, setCategories] = useState<string[]>([
+    ...HITTER_CATS,
+    ...PITCHER_CATS,
+  ]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeamId, setMyTeamId] = useState<string>("");
   const [scope, setScope] = useState<"MLB" | "AL" | "NL">("MLB");
@@ -96,7 +101,11 @@ export default function LeagueSettingsPage() {
           setBudget(String(existingLeague.budget));
           setMainRosterSlots(String(existingLeague.mainRosterSlots ?? 23));
           setScoringType(existingLeague.scoringType);
-          setCategories(existingLeague.categories.join(","));
+          setCategories(
+            existingLeague.categories && existingLeague.categories.length > 0
+              ? existingLeague.categories
+              : [...HITTER_CATS, ...PITCHER_CATS],
+          );
           setTeams(existingLeague.teams ?? []);
           setMyTeamId(existingLeague.myTeamId ?? "");
           setScope(existingLeague.scope ?? "MLB");
@@ -120,7 +129,7 @@ export default function LeagueSettingsPage() {
     setBudget("260");
     setMainRosterSlots("23");
     setScoringType("rotisserie");
-    setCategories("HR,RBI,R,SB,AVG");
+    setCategories([...HITTER_CATS, ...PITCHER_CATS]);
     setTeams([]);
     setMyTeamId("");
     setScope("MLB");
@@ -146,10 +155,9 @@ export default function LeagueSettingsPage() {
     const parsedTeamCount = Number(teamCount);
     const parsedBudget = Number(budget);
     const parsedMainRosterSlots = Number(mainRosterSlots);
-    const parsedCategories = categories
-      .split(",")
-      .map((category) => category.trim())
-      .filter((category) => category.length > 0);
+    const parsedCategories = categories;
+    const hasHitterCat = parsedCategories.some((c) => (HITTER_CATS as readonly string[]).includes(c));
+    const hasPitcherCat = parsedCategories.some((c) => (PITCHER_CATS as readonly string[]).includes(c));
 
     if (!trimmedLeagueName) {
       setError("League name is required.");
@@ -168,6 +176,11 @@ export default function LeagueSettingsPage() {
     
     if (!parsedMainRosterSlots || parsedMainRosterSlots < 1) {
       setError("Main roster slots must be at least 1.");
+      return;
+    }
+
+    if (!hasHitterCat || !hasPitcherCat) {
+      setError("Select at least one hitter category and one pitcher category.");
       return;
     }
 
@@ -423,16 +436,58 @@ export default function LeagueSettingsPage() {
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
-              Categories
+              Scoring Categories
             </label>
-            <Input
-              placeholder="HR,RBI,R,SB,AVG"
-              value={categories}
-              onChange={(e) => setCategories(e.target.value)}
-              disabled={isLoading}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase">
+                  Hitters
+                </p>
+                {HITTER_CATS.map((cat) => (
+                  <label key={cat} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={categories.includes(cat)}
+                      onChange={(e) =>
+                        setCategories((prev) =>
+                          e.target.checked
+                            ? [...prev, cat]
+                            : prev.filter((c) => c !== cat),
+                        )
+                      }
+                      disabled={isLoading}
+                      className="h-4 w-4"
+                    />
+                    {cat}
+                  </label>
+                ))}
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase">
+                  Pitchers
+                </p>
+                {PITCHER_CATS.map((cat) => (
+                  <label key={cat} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={categories.includes(cat)}
+                      onChange={(e) =>
+                        setCategories((prev) =>
+                          e.target.checked
+                            ? [...prev, cat]
+                            : prev.filter((c) => c !== cat),
+                        )
+                      }
+                      disabled={isLoading}
+                      className="h-4 w-4"
+                    />
+                    {cat}
+                  </label>
+                ))}
+              </div>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Enter categories separated by commas.
+              At least one hitter category and one pitcher category are required.
             </p>
           </div>
 

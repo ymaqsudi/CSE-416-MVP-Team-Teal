@@ -103,6 +103,7 @@ export default function PlayersPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [activeLeagueId, setActiveLeagueId] = useState<string>("");
   const [leagueScope, setLeagueScope] = useState<LeagueScope>("MLB");
+  const [leagueCategories, setLeagueCategories] = useState<string[]>([]);
   const [customPlayers, setCustomPlayers] = useState<Player[]>([]);
   const [showAddPlayerDialog, setShowAddPlayerDialog] = useState(false);
   const [addPlayerLoading, setAddPlayerLoading] = useState(false);
@@ -137,7 +138,10 @@ export default function PlayersPage() {
   useEffect(() => {
     async function fetchValuations() {
       try {
-        const qs = leagueScope === "MLB" ? "" : `?mlbLeague=${leagueScope}`;
+        const params = new URLSearchParams();
+        if (leagueScope !== "MLB") params.set("mlbLeague", leagueScope);
+        if (leagueCategories.length > 0) params.set("categories", leagueCategories.join(","));
+        const qs = params.toString() ? `?${params.toString()}` : "";
         const res = await fetch(`/api/valuation/valuations/all${qs}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -151,7 +155,7 @@ export default function PlayersPage() {
       }
     }
     fetchValuations();
-  }, [leagueScope]);
+  }, [leagueScope, leagueCategories]);
 
   useEffect(() => {
     const storedLeagueId = localStorage.getItem("draftkit_leagueId");
@@ -176,6 +180,9 @@ export default function PlayersPage() {
           data.leagues?.[0];
         if (league?.scope === "AL" || league?.scope === "NL" || league?.scope === "MLB") {
           setLeagueScope(league.scope);
+        }
+        if (Array.isArray(league?.categories)) {
+          setLeagueCategories(league.categories);
         }
       } catch (e) {
         console.error("Failed to load league scope:", e);

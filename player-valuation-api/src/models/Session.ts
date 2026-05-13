@@ -18,6 +18,8 @@ const sessionSchema = new mongoose.Schema(
       budget: { type: Number, required: true },
       scoring: { type: String, default: "5x5" },
       rosterSlotsPerTeam: { type: mongoose.Schema.Types.Mixed, default: undefined },
+      mlbLeague: { type: String, enum: ["AL", "NL"], default: undefined },
+      categories: { type: [String], default: undefined },
     },
     draftState: {
       picks: { type: [pickSchema], default: [] },

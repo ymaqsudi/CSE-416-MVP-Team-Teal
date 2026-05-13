@@ -16,9 +16,20 @@ export function parseMlbLeague(value: unknown): "AL" | "NL" | undefined {
   return value === "AL" || value === "NL" ? value : undefined;
 }
 
+const ALL_CATS = new Set(["HR", "RBI", "R", "SB", "AVG", "W", "ERA", "WHIP", "K", "SV"]);
+
+export function parseCategories(value: unknown): string[] | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const parts = value
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter((s) => ALL_CATS.has(s));
+  return parts.length > 0 ? parts : undefined;
+}
+
 export async function leagueDraftFromQuery(
   sessionId: unknown,
-  opts: { requireSession: boolean; mlbLeague?: "AL" | "NL" }
+  opts: { requireSession: boolean; mlbLeague?: "AL" | "NL"; categories?: string[] }
 ): Promise<
   | { ok: true; league: LeagueConfig; draft: DraftStateInput }
   | { ok: false; status: number; message: string }
@@ -31,7 +42,7 @@ export async function leagueDraftFromQuery(
     }
     return {
       ok: true,
-      league: { ...DEFAULT_DISPLAY_LEAGUE, mlbLeague: opts.mlbLeague },
+      league: { ...DEFAULT_DISPLAY_LEAGUE, mlbLeague: opts.mlbLeague, categories: opts.categories },
       draft: { picks: [] },
     };
   }
@@ -43,7 +54,11 @@ export async function leagueDraftFromQuery(
   const sessionLeague = doc.league as LeagueConfig;
   return {
     ok: true,
-    league: { ...sessionLeague, mlbLeague: opts.mlbLeague ?? sessionLeague.mlbLeague },
+    league: {
+      ...sessionLeague,
+      mlbLeague: opts.mlbLeague ?? sessionLeague.mlbLeague,
+      categories: opts.categories ?? sessionLeague.categories,
+    },
     draft: {
       picks: draft.picks ?? [],
       budgetsRemaining: draft.budgetsRemaining,

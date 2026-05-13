@@ -117,7 +117,12 @@ export async function PATCH(
     league.budget = Number(budget);
     league.mainRosterSlots = Number(mainRosterSlots) || 23;
     league.scoringType = scoringType ? String(scoringType) : "rotisserie";
-    league.categories = Array.isArray(categories) ? categories : [];
+    const SUPPORTED_CATS = new Set(["HR", "RBI", "R", "SB", "AVG", "W", "ERA", "WHIP", "K", "SV"]);
+    league.categories = Array.isArray(categories)
+      ? categories
+          .map((c: unknown) => String(c).trim().toUpperCase())
+          .filter((c: string) => SUPPORTED_CATS.has(c))
+      : [];
     league.teams = merged;
     if (scope === "MLB" || scope === "AL" || scope === "NL") {
       league.scope = scope;

@@ -53,6 +53,7 @@ export default function DraftPage() {
   const [budget, setBudget] = useState<number | null>(null);
   const [mainRosterSlots, setMainRosterSlots] = useState<number>(23);
   const [leagueScope, setLeagueScope] = useState<LeagueScope>("MLB");
+  const [leagueCategories, setLeagueCategories] = useState<string[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeamId, setMyTeamId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -114,6 +115,7 @@ export default function DraftPage() {
             teams?: Team[];
             myTeamId?: string;
             scope?: "MLB" | "AL" | "NL";
+            categories?: string[];
           }) => l._id === leagueId,
         );
         if (league) {
@@ -122,6 +124,9 @@ export default function DraftPage() {
           setTeams(league.teams ?? []);
           if (league.scope === "AL" || league.scope === "NL" || league.scope === "MLB") {
             setLeagueScope(league.scope);
+          }
+          if (Array.isArray(league.categories)) {
+            setLeagueCategories(league.categories);
           }
           setMyTeamId(league.myTeamId ?? "");
         }
@@ -140,8 +145,11 @@ export default function DraftPage() {
     }
     const controller = new AbortController();
     setSearchLoading(true);
-    const scopeParam = leagueScope === "MLB" ? "" : `&mlbLeague=${leagueScope}`;
-    fetch(`/api/valuation/players?q=${encodeURIComponent(searchQuery)}&limit=10${scopeParam}`, {
+    const extra = new URLSearchParams();
+    if (leagueScope !== "MLB") extra.set("mlbLeague", leagueScope);
+    if (leagueCategories.length > 0) extra.set("categories", leagueCategories.join(","));
+    const extraStr = extra.toString() ? `&${extra.toString()}` : "";
+    fetch(`/api/valuation/players?q=${encodeURIComponent(searchQuery)}&limit=10${extraStr}`, {
       signal: controller.signal,
     })
       .then((r) => r.json())
@@ -149,7 +157,7 @@ export default function DraftPage() {
       .catch(() => {})
       .finally(() => setSearchLoading(false));
     return () => controller.abort();
-  }, [searchQuery, selectedPlayer, leagueScope]);
+  }, [searchQuery, selectedPlayer, leagueScope, leagueCategories]);
 
   // derive drafted player IDs for filtering available players
   const draftedIds = new Set(picks.map((p) => p.playerId));
@@ -349,7 +357,13 @@ export default function DraftPage() {
                             setSelectedPlayer(p);
                             setSearchQuery(p.name);
                             setSelectedValuation(null);
-                            fetch(`/api/valuation/players/${p.mlbPlayerId ?? p.id}/valuation${leagueScope === "MLB" ? "" : `?mlbLeague=${leagueScope}`}`)
+                            fetch((() => {
+                              const params = new URLSearchParams();
+                              if (leagueScope !== "MLB") params.set("mlbLeague", leagueScope);
+                              if (leagueCategories.length > 0) params.set("categories", leagueCategories.join(","));
+                              const qs = params.toString() ? `?${params.toString()}` : "";
+                              return `/api/valuation/players/${p.mlbPlayerId ?? p.id}/valuation${qs}`;
+                            })())
                               .then((r) => r.json())
                               .then((data) => setSelectedValuation(data.valuation?.dollarValue ?? null))
                               .catch(() => {});

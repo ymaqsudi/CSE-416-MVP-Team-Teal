@@ -63,6 +63,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { leagueName, teamCount, budget, mainRosterSlots, scoringType, categories, scope } = body;
     const normalizedScope = scope === "AL" || scope === "NL" ? scope : "MLB";
+    const SUPPORTED_CATS = new Set(["HR", "RBI", "R", "SB", "AVG", "W", "ERA", "WHIP", "K", "SV"]);
+    const normalizedCategories = Array.isArray(categories)
+      ? categories
+          .map((c: unknown) => String(c).trim().toUpperCase())
+          .filter((c: string) => SUPPORTED_CATS.has(c))
+      : [];
 
     if (!leagueName || !teamCount || !budget) {
       return NextResponse.json(
@@ -81,7 +87,7 @@ export async function POST(request: NextRequest) {
       budget: Number(budget),
       mainRosterSlots: Number(mainRosterSlots) || 23,
       scoringType: scoringType ? String(scoringType) : "rotisserie",
-      categories: Array.isArray(categories) ? categories : [],
+      categories: normalizedCategories,
       teams: seededTeams,
       myTeamId: seededTeams[0]?.id ?? "",
       scope: normalizedScope,
