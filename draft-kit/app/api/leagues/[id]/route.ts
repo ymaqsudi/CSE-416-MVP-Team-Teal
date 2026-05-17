@@ -83,6 +83,8 @@ export async function PATCH(
       myTeamId: incomingMyTeamId,
       scope,
       rosterSlots,
+      taxiSlots,
+      taxiDraftOrder,
     } = body;
 
     if (!leagueName || !teamCount || !budget) {
@@ -149,6 +151,30 @@ export async function PATCH(
     league.teams = merged;
     if (scope === "MLB" || scope === "AL" || scope === "NL") {
       league.scope = scope;
+    }
+
+    if (taxiSlots !== undefined) {
+      const n = Number(taxiSlots);
+      if (Number.isFinite(n) && n >= 0) {
+        league.taxiSlots = Math.floor(n);
+      }
+    }
+
+    if (Array.isArray(taxiDraftOrder)) {
+      const validIdSet = new Set(merged.map((t) => t.id));
+      const cleaned = taxiDraftOrder
+        .map((v: unknown) => String(v))
+        .filter((id: string) => validIdSet.has(id));
+      const unique = Array.from(new Set(cleaned));
+      if (unique.length === merged.length) {
+        league.taxiDraftOrder = unique;
+      } else {
+        league.taxiDraftOrder = league.taxiDraftOrder.filter((id) => validIdSet.has(id));
+      }
+    } else {
+      league.taxiDraftOrder = (league.taxiDraftOrder ?? []).filter((id) =>
+        merged.some((t) => t.id === id),
+      );
     }
 
     console.log("Before save mainRosterSlots:", league.mainRosterSlots);
