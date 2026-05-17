@@ -147,7 +147,15 @@ export type LeagueConfig = {
   mlbLeague?: "AL" | "NL";
   /** Active categories; undefined or empty means all 10 5x5 cats. */
   categories?: string[];
+  /**
+   * Fraction of the distributable auction budget reserved for hitters.
+   * Pitchers receive `1 - hitterBudgetShare`. Defaults to 0.68 — the midpoint
+   * of the 65-70% industry convention for 5x5 with 14H/9P rosters.
+   */
+  hitterBudgetShare?: number;
 };
+
+export const DEFAULT_HITTER_BUDGET_SHARE = 0.68;
 
 export const SUPPORTED_HITTER_CATS = ["HR", "RBI", "R", "SB", "AVG"] as const;
 export const SUPPORTED_PITCHER_CATS = ["W", "ERA", "WHIP", "K", "SV"] as const;
@@ -570,13 +578,18 @@ function computeParValues(
     );
   }
 
-  // Pass 3: SAR.
+  // Pass 3: SAR. Sum SAR separately for hitters and pitchers so the budget split
+  // can route each pot independently. Two-way players are routed by their
+  // assigned slot — bestPosition === "P" → pitcher pot, else hitter pot — which
+  // matches the roster spot they actually consume.
   const result = new Map<string, ParEntry>();
-  let sumAbove = 0;
+  let sumAboveHitters = 0;
+  let sumAbovePitchers = 0;
   for (const [id, { p, sgp, bestPosition }] of assignments) {
     const rep = bestPosition ? (replacementByPos.get(bestPosition) ?? 0) : 0;
     const above = Math.max(0, sgp - rep);
-    sumAbove += above;
+    if (bestPosition === "P") sumAbovePitchers += above;
+    else sumAboveHitters += above;
     result.set(id, { p, sgp, above, bestPosition, par: 0 });
   }
 
@@ -587,9 +600,15 @@ function computeParValues(
   const totalSlots = slotEntries.reduce((sum, [, c]) => sum + c, 0);
   const auctionedCount = numTeams * totalSlots;
   const distributable = Math.max(0, budget - auctionedCount);
+  const hitterShare = league.hitterBudgetShare ?? DEFAULT_HITTER_BUDGET_SHARE;
+  const distributableHitters = distributable * hitterShare;
+  const distributablePitchers = distributable * (1 - hitterShare);
   for (const entry of result.values()) {
     if (entry.above > 0) {
-      const share = sumAbove > 0 ? (entry.above / sumAbove) * distributable : 0;
+      const isP = entry.bestPosition === "P";
+      const pot = isP ? distributablePitchers : distributableHitters;
+      const sumSide = isP ? sumAbovePitchers : sumAboveHitters;
+      const share = sumSide > 0 ? (entry.above / sumSide) * pot : 0;
       entry.par = 1 + share;
     } else {
       entry.par = 0;
