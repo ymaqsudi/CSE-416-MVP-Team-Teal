@@ -340,7 +340,7 @@ function buildPlayerDoc(
   if (person?.bats) doc.bats = person.bats;
   if (person?.throws) doc.throws = person.throws;
 
-  // Hitter projections + 2025 actuals + Savant
+  // Hitter projections + 3-year combined prior + Savant
   if (fg?.isHitter) {
     if (fg.projHittingStats) {
       const p = fg.projHittingStats;
@@ -371,7 +371,7 @@ function buildPlayerDoc(
     }
   }
 
-  // Pitcher projections + 2025 actuals + Savant
+  // Pitcher projections + 3-year combined prior + Savant
   if (fg?.isPitcher) {
     if (fg.projPitchingStats) {
       const p = fg.projPitchingStats;

@@ -7,14 +7,23 @@ export interface FgStats {
 export interface FgPlayer {
   name: string;
   mlbamId: number;
-  /** True if the player has hitter projections or 2025 hitter stats. */
+  /** True if the player has hitter projections or hitter stats in any of the prior seasons. */
   isHitter: boolean;
-  /** True if the player has pitcher projections or 2025 pitcher stats. */
+  /** True if the player has pitcher projections or pitcher stats in any of the prior seasons. */
   isPitcher: boolean;
   projHittingStats: FgStats | null;
   projPitchingStats: FgStats | null;
+  /**
+   * Combined per-season-equivalent hitter stats across {@link PREV_SEASONS}.
+   * Counting stats are summed across seasons then scaled to a 162-game rate; AVG is G-weighted.
+   * Null if the player has no qualifying hitter stats in any prior season.
+   */
   prevHittingStats: FgStats | null;
+  /** Same shape as {@link prevHittingStats} but for pitchers; ERA/WHIP are IP-weighted. */
   prevPitchingStats: FgStats | null;
+  /** Raw per-year prev stats keyed by season. Used to build the combined object. */
+  prevHittingStatsByYear: Record<number, FgStats>;
+  prevPitchingStatsByYear: Record<number, FgStats>;
   savantStats?: FgStats | null;
 }
 
@@ -28,6 +37,8 @@ function emptyPlayer(mid: number, name: string): FgPlayer {
     projPitchingStats: null,
     prevHittingStats: null,
     prevPitchingStats: null,
+    prevHittingStatsByYear: {},
+    prevPitchingStatsByYear: {},
   };
 }
 
@@ -66,12 +77,21 @@ function isMeaningfulPitcherStats(s: FgStats): boolean {
 
 const FG_BASE = "https://www.fangraphs.com/api";
 
+/** Seasons pulled for the "prior" side of the valuation blend, newest first. */
+const PREV_SEASONS = [2025, 2024, 2023] as const;
+
 const FG_ENDPOINTS = {
   proj_hitters:  `${FG_BASE}/projections?type=steamer&stats=bat&pos=all&team=0&players=0&lg=all`,
   proj_pitchers: `${FG_BASE}/projections?type=steamer&stats=pit&pos=all&team=0&players=0&lg=all`,
-  prev_hitters:  `${FG_BASE}/leaders/major-league/data?pos=all&stats=bat&lg=all&qual=0&season=2025&season1=2025&month=0&hand=&team=0&pageitems=2000&pagenum=1&type=8&ind=0`,
-  prev_pitchers: `${FG_BASE}/leaders/major-league/data?pos=all&stats=pit&lg=all&qual=0&season=2025&season1=2025&month=0&hand=&team=0&pageitems=2000&pagenum=1&type=8&ind=0`,
 };
+
+function prevHittersUrl(season: number): string {
+  return `${FG_BASE}/leaders/major-league/data?pos=all&stats=bat&lg=all&qual=0&season=${season}&season1=${season}&month=0&hand=&team=0&pageitems=2000&pagenum=1&type=8&ind=0`;
+}
+
+function prevPitchersUrl(season: number): string {
+  return `${FG_BASE}/leaders/major-league/data?pos=all&stats=pit&lg=all&qual=0&season=${season}&season1=${season}&month=0&hand=&team=0&pageitems=2000&pagenum=1&type=8&ind=0`;
+}
 
 const SAVANT_ENDPOINTS = {
   hit_xstats:   "https://baseballsavant.mlb.com/leaderboard/custom?year=2025&type=batter&filter=&sort=4&sortDir=desc&min=25&selections=xba,xslg,xwoba,barrel_batted_rate,hard_hit_percent,exit_velocity_avg,k_percent,bb_percent&chart=false&csv=true",
@@ -208,6 +228,94 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Min totals required to emit a combined prior. Below these the player is treated as having no prior. */
+const COMBINE_MIN_GAMES = 10;
+const COMBINE_MIN_IP = 5;
+
+/**
+ * Combine multiple seasons of hitter stats into a single per-season-equivalent object.
+ * Counting stats (HR/RBI/R/SB) and games are summed and divided by the number of seasons
+ * with data, producing a stable "typical season" for the player. AVG is G-weighted across
+ * seasons so a 50-game cameo doesn't outvote a 150-game starter year.
+ *
+ * Why per-season average (not 162-scaled): downstream consumers (sgpValuation prior-blend,
+ * sample gates like prevGames >= 50) expect numbers on a single-season scale. Scaling counting
+ * stats to a 162-game rate would inflate values for players with injury history.
+ */
+function combineHitterSeasons(byYear: Record<number, FgStats>): FgStats | null {
+  let totalG = 0;
+  let sumHR = 0, sumRBI = 0, sumR = 0, sumSB = 0;
+  let avgWeight = 0;
+  let avgGames = 0;
+  for (const s of Object.values(byYear)) {
+    const g = pos(s.games);
+    if (g === 0) continue;
+    totalG += g;
+    sumHR  += pos(s.hr);
+    sumRBI += pos(s.rbi);
+    sumR   += pos(s.r);
+    sumSB  += pos(s.sb);
+    if (s.avg != null && Number.isFinite(s.avg)) {
+      avgWeight += (s.avg as number) * g;
+      avgGames += g;
+    }
+  }
+  if (totalG < COMBINE_MIN_GAMES) return null;
+  const seasonsWithData = Object.values(byYear).filter((s) => pos(s.games) > 0).length || 1;
+  return {
+    games: Math.round(totalG / seasonsWithData),
+    hr:    Math.round(sumHR / seasonsWithData),
+    rbi:   Math.round(sumRBI / seasonsWithData),
+    r:     Math.round(sumR / seasonsWithData),
+    sb:    Math.round(sumSB / seasonsWithData),
+    avg:   avgGames > 0 ? Math.round((avgWeight / avgGames) * 1000) / 1000 : null,
+  };
+}
+
+/**
+ * Combine multiple seasons of pitcher stats. Counting stats (W/K/SV) and IP are summed
+ * then scaled to a full-season equivalent via total IP / SP_BASELINE_IP (200).
+ * ERA and WHIP are IP-weighted so a 30-IP cameo doesn't drown out a 180-IP starter year.
+ *
+ * Note: we scale by SP baseline (200 IP) here — relievers will look light, but the
+ * downstream availability haircut in sgpValuation uses role-appropriate baselines.
+ */
+function combinePitcherSeasons(byYear: Record<number, FgStats>): FgStats | null {
+  let totalIP = 0;
+  let sumW = 0, sumK = 0, sumSV = 0;
+  let eraWeight = 0, eraIP = 0;
+  let whipWeight = 0, whipIP = 0;
+  for (const s of Object.values(byYear)) {
+    const ip = pos(s.ip);
+    if (ip === 0) continue;
+    totalIP += ip;
+    sumW  += pos(s.w);
+    sumK  += pos(s.k);
+    sumSV += pos(s.sv);
+    if (s.era != null && Number.isFinite(s.era)) {
+      eraWeight += (s.era as number) * ip;
+      eraIP += ip;
+    }
+    if (s.whip != null && Number.isFinite(s.whip)) {
+      whipWeight += (s.whip as number) * ip;
+      whipIP += ip;
+    }
+  }
+  if (totalIP < COMBINE_MIN_IP) return null;
+  const seasonsWithData = Object.values(byYear).filter((s) => pos(s.ip) > 0).length || 1;
+  // Per-season equivalent: average counting stats and IP across seasons that had data.
+  // Don't scale to a fixed baseline — a reliever's 60-IP/30-SV pattern should look like
+  // 60 IP / 30 SV, not be inflated to a starter's 200-IP frame.
+  return {
+    ip:   Math.round((totalIP / seasonsWithData) * 10) / 10,
+    w:    Math.round(sumW / seasonsWithData),
+    k:    Math.round(sumK / seasonsWithData),
+    sv:   Math.round(sumSV / seasonsWithData),
+    era:  eraIP > 0 ? Math.round((eraWeight / eraIP) * 100) / 100 : null,
+    whip: whipIP > 0 ? Math.round((whipWeight / whipIP) * 100) / 100 : null,
+  };
+}
+
 export async function fetchProjections(): Promise<Record<string, FgPlayer>> {
   const players = new Map<number, FgPlayer>();
 
@@ -236,28 +344,30 @@ export async function fetchProjections(): Promise<Record<string, FgPlayer>> {
   }
   await delay(1000);
 
-  // --- 2025 actual stats ---
-  for (const row of await fetchJsonRows(FG_ENDPOINTS.prev_hitters, "2025 actual hitter stats")) {
-    const mid = mlbamId(row);
-    if (!mid) continue;
-    const stats = buildHitterPrev(row);
-    if (!isMeaningfulHitterStats(stats)) continue;
-    const p = getOrCreate(players, mid, playerName(row));
-    p.isHitter = true;
-    p.prevHittingStats = stats;
-  }
-  await delay(1000);
+  // --- Prior-season actuals: pull each of PREV_SEASONS and stash per-year ---
+  for (const season of PREV_SEASONS) {
+    for (const row of await fetchJsonRows(prevHittersUrl(season), `${season} actual hitter stats`)) {
+      const mid = mlbamId(row);
+      if (!mid) continue;
+      const stats = buildHitterPrev(row);
+      if (!isMeaningfulHitterStats(stats)) continue;
+      const p = getOrCreate(players, mid, playerName(row));
+      p.isHitter = true;
+      p.prevHittingStatsByYear[season] = stats;
+    }
+    await delay(1000);
 
-  for (const row of await fetchJsonRows(FG_ENDPOINTS.prev_pitchers, "2025 actual pitcher stats")) {
-    const mid = mlbamId(row);
-    if (!mid) continue;
-    const stats = buildPitcherPrev(row);
-    if (!isMeaningfulPitcherStats(stats)) continue;
-    const p = getOrCreate(players, mid, playerName(row));
-    p.isPitcher = true;
-    p.prevPitchingStats = stats;
+    for (const row of await fetchJsonRows(prevPitchersUrl(season), `${season} actual pitcher stats`)) {
+      const mid = mlbamId(row);
+      if (!mid) continue;
+      const stats = buildPitcherPrev(row);
+      if (!isMeaningfulPitcherStats(stats)) continue;
+      const p = getOrCreate(players, mid, playerName(row));
+      p.isPitcher = true;
+      p.prevPitchingStatsByYear[season] = stats;
+    }
+    await delay(1000);
   }
-  await delay(1000);
 
   // --- Baseball Savant: hitter xStats ---
   let savantHitCount = 0;
@@ -320,6 +430,19 @@ export async function fetchProjections(): Promise<Record<string, FgPlayer>> {
     }
   }
   console.log(`  Merged sprint speed for ${sprintCount} players.`);
+
+  // --- Combine per-year prev stats into a single per-season-equivalent object ---
+  // The downstream blender (sgpValuation.ts) consumes prevHittingStats / prevPitchingStats
+  // unchanged and applies its existing sample gates against prevGames / prevIP.
+  let hitCombined = 0;
+  let pitCombined = 0;
+  for (const p of players.values()) {
+    p.prevHittingStats = combineHitterSeasons(p.prevHittingStatsByYear);
+    p.prevPitchingStats = combinePitcherSeasons(p.prevPitchingStatsByYear);
+    if (p.prevHittingStats) hitCombined++;
+    if (p.prevPitchingStats) pitCombined++;
+  }
+  console.log(`  Combined ${PREV_SEASONS.length}-year prior for ${hitCombined} hitters and ${pitCombined} pitchers.`);
 
   const out: Record<string, FgPlayer> = {};
   for (const [mid, p] of players) out[String(mid)] = p;

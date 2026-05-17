@@ -160,9 +160,11 @@ export type LeagueConfig = {
    */
   flexPremium?: number;
   /**
-   * Weight applied to last year's stats when blending into SGP.
-   * Defaults to 0.15 (85% projection / 15% prior). Each side (hitter/pitcher) is
-   * blended independently and the prior side is skipped if its sample is too thin.
+   * Weight applied to the player's recent-history stats when blending into SGP.
+   * The "prior" side is a per-season-equivalent combine of the last 3 seasons (see
+   * fetchProjections.ts → combineHitterSeasons/combinePitcherSeasons). Defaults to
+   * 0.15 (85% projection / 15% prior). Each side (hitter/pitcher) is blended
+   * independently and the prior side is skipped if its sample is too thin.
    */
   priorYearWeight?: number;
 };
@@ -243,14 +245,14 @@ export type PlayerLean = {
   projK?: number;
   projSV?: number;
   projIP?: number;
-  /** Hitter 2025 actual stats */
+  /** Hitter prior — per-season-equivalent combine of the last 3 seasons (2023–2025). */
   prevGames?: number;
   prevHR?: number;
   prevRBI?: number;
   prevR?: number;
   prevSB?: number;
   prevAVG?: number;
-  /** Pitcher 2025 actual stats */
+  /** Pitcher prior — per-season-equivalent combine of the last 3 seasons (2023–2025). */
   prevW?: number;
   prevERA?: number;
   prevWHIP?: number;
