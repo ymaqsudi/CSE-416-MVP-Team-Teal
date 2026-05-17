@@ -153,9 +153,24 @@ export type LeagueConfig = {
    * of the 65-70% industry convention for 5x5 with 14H/9P rosters.
    */
   hitterBudgetShare?: number;
+  /**
+   * Fraction of a player's *second-best slot SAR* added to their effective SAR
+   * to reward positional flexibility. Defaults to 0.15. Two-way players (Ohtani)
+   * naturally qualify via their off-role slot.
+   */
+  flexPremium?: number;
 };
 
 export const DEFAULT_HITTER_BUDGET_SHARE = 0.68;
+export const DEFAULT_FLEX_PREMIUM = 0.15;
+
+/**
+ * Real fielding positions that qualify a player's "second best slot" for the
+ * flex premium. Compound/flex slots (CI, MI, UTIL) are excluded because they
+ * are derived from real positions — counting them would give single-position
+ * players phantom bonuses (e.g. a 1B-only player picking up CI + UTIL credit).
+ */
+const FLEX_PREMIUM_SLOTS = new Set(["C", "1B", "2B", "3B", "SS", "OF", "P"]);
 
 export const SUPPORTED_HITTER_CATS = ["HR", "RBI", "R", "SB", "AVG"] as const;
 export const SUPPORTED_PITCHER_CATS = ["W", "ERA", "WHIP", "K", "SV"] as const;
@@ -482,6 +497,8 @@ export type ValuationBreakdown = {
   riskMultiplier?: number;
   /** Active inflation factor for this valuation (1.0 = on par). Diagnostic. */
   inflationFactor?: number;
+  /** SAR added for multi-position / two-way flexibility. Diagnostic. */
+  flexBonus?: number;
 };
 
 function riskNote(p: PlayerLean): string | undefined {
@@ -504,6 +521,8 @@ type ParEntry = {
   above: number;
   bestPosition?: string;
   par: number;
+  /** SAR bonus applied for multi-position eligibility / two-way flexibility. */
+  flexBonus: number;
 };
 
 /**
@@ -550,12 +569,27 @@ function computeParValues(
   }
 
   // Pass 1: greedy single-position assignment. Per-player work is now O(slots), not O(n·log n).
-  const assignments = new Map<string, { p: PlayerLean; sgp: number; bestPosition?: string }>();
+  // Also tracks the SAR at the player's second-best real-position slot — used in Pass 3
+  // to apply a flex premium that rewards multi-position eligibility and two-way players.
+  const assignments = new Map<string, {
+    p: PlayerLean;
+    sgp: number;
+    bestPosition?: string;
+    secondBestSar: number;
+  }>();
   const partitioned: Record<string, PlayerLean[]> = {};
+  // Two-way recognition: positions list includes P AND at least one non-P slot.
+  // For these players, UTIL is a real "other role" rather than a phantom catch-all,
+  // so we let it count toward the flex premium below.
+  const isTwoWay = (p: PlayerLean) =>
+    p.positions.includes("P") && p.positions.some((x) => x !== "P");
   for (const p of eligible) {
     const sgp = sgpByPlayer.get(String(p._id)) ?? 0;
+    const twoWay = isTwoWay(p);
     let bestSar = -Infinity;
     let bestPosition: string | undefined;
+    let bestPremiumSar = -Infinity;
+    let secondBestPremiumSar = -Infinity;
     for (const [slot] of slotEntries) {
       if (!eligibleAt(p, slot)) continue;
       const rep = preReplacementBySlot.get(slot) ?? 0;
@@ -564,8 +598,25 @@ function computeParValues(
         bestSar = sar;
         bestPosition = slot;
       }
+      // Track best/second-best among slots that count toward the flex premium.
+      // Pure hitters use real positions only (UTIL/CI/MI excluded to avoid
+      // phantom bonuses). Two-way players also let UTIL count so an Ohtani
+      // listed as P/DH still gets credit for his hitter eligibility.
+      const counts = FLEX_PREMIUM_SLOTS.has(slot) || (twoWay && slot === "UTIL");
+      if (counts) {
+        if (sar > bestPremiumSar) {
+          secondBestPremiumSar = bestPremiumSar;
+          bestPremiumSar = sar;
+        } else if (sar > secondBestPremiumSar) {
+          secondBestPremiumSar = sar;
+        }
+      }
     }
-    assignments.set(String(p._id), { p, sgp, bestPosition });
+    const secondBestSar = Math.max(
+      0,
+      secondBestPremiumSar === -Infinity ? 0 : secondBestPremiumSar,
+    );
+    assignments.set(String(p._id), { p, sgp, bestPosition, secondBestSar });
     if (bestPosition) (partitioned[bestPosition] ??= []).push(p);
   }
 
@@ -585,12 +636,17 @@ function computeParValues(
   const result = new Map<string, ParEntry>();
   let sumAboveHitters = 0;
   let sumAbovePitchers = 0;
-  for (const [id, { p, sgp, bestPosition }] of assignments) {
+  const flexPremium = league.flexPremium ?? DEFAULT_FLEX_PREMIUM;
+  for (const [id, { p, sgp, bestPosition, secondBestSar }] of assignments) {
     const rep = bestPosition ? (replacementByPos.get(bestPosition) ?? 0) : 0;
-    const above = Math.max(0, sgp - rep);
+    const baseSar = Math.max(0, sgp - rep);
+    // Flex premium only fires when both the primary and secondary slots are
+    // value-positive; it cannot rescue a sub-replacement player.
+    const flexBonus = baseSar > 0 && secondBestSar > 0 ? flexPremium * secondBestSar : 0;
+    const above = baseSar + flexBonus;
     if (bestPosition === "P") sumAbovePitchers += above;
     else sumAboveHitters += above;
-    result.set(id, { p, sgp, above, bestPosition, par: 0 });
+    result.set(id, { p, sgp, above, bestPosition, par: 0, flexBonus });
   }
 
   // Pass 4: par dollars. Industry-standard auction model — only the players who
@@ -668,6 +724,11 @@ export function valuePool(
     if (entry.above > 0) parts.push("SGP above replacement");
     else parts.push("At or below replacement");
     if (entry.p.depthRole === "Starter") parts.push("starting role");
+    if (entry.flexBonus > 0) {
+      const isTwoWay =
+        entry.p.positions.includes("P") && entry.p.positions.some((x) => x !== "P");
+      parts.push(isTwoWay ? "two-way flexibility premium" : "multi-position flex premium");
+    }
     const note = riskNote(entry.p);
     if (note) parts.push(note);
     if (useStaticPar && Math.abs(inflation - 1) > 0.05) {
@@ -683,6 +744,7 @@ export function valuePool(
       riskFlag: note,
       riskMultiplier: mult < 1 ? Math.round(mult * 1000) / 1000 : undefined,
       inflationFactor: useStaticPar ? Math.round(inflation * 1000) / 1000 : undefined,
+      flexBonus: entry.flexBonus > 0 ? Math.round(entry.flexBonus * 100) / 100 : undefined,
     });
   }
 
