@@ -384,9 +384,44 @@ function hasPitcherStats(p: PlayerLean): boolean {
   return p.projW != null || p.projK != null || p.projIP != null;
 }
 
+export type PlayerSGPParts = {
+  /** Hitter-side SGP contribution (post risk multiplier). 0 for pure pitchers. */
+  hitter: number;
+  /** Pitcher-side SGP contribution (post risk multiplier). 0 for pure hitters. */
+  pitcher: number;
+  /** Sum used everywhere SGP was previously a single number. */
+  total: number;
+};
+
 /**
- * Total SGP. Two-way players (e.g. Ohtani — positions: ["P","DH"] with both stat sets)
- * have their hitter and pitcher SGP summed; pure pitchers/hitters get one branch only.
+ * Per-side SGP breakdown. Two-way players (e.g. Ohtani — positions ["P","DH"] with
+ * both stat sets) get both branches; pure pitchers/hitters get one. The riskMultiplier
+ * is applied uniformly so callers can route players by larger-side contribution.
+ */
+export function computePlayerSGPParts(
+  p: PlayerLean,
+  numTeams = 12,
+  categories?: string[],
+  baselines: LeagueRateBaselines = DEFAULT_BASELINES,
+): PlayerSGPParts {
+  const denom = getDenominators(numTeams);
+  const cats = categorySet(categories);
+  let hitter = 0;
+  let pitcher = 0;
+  if (isPitcher(p) && hasPitcherStats(p)) pitcher = pitcherSGP(p, denom, cats, baselines);
+  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) hitter = hitterSGP(p, denom, cats, baselines);
+  // Fallback: positions array is pitcher-only but no pitcher stats present → treat as hitter
+  // if hitter stats exist, else 0. Keeps legacy single-position synthetic fixtures working.
+  if (hitter === 0 && pitcher === 0) {
+    if (hasHitterStats(p)) hitter = hitterSGP(p, denom, cats, baselines);
+    else if (hasPitcherStats(p)) pitcher = pitcherSGP(p, denom, cats, baselines);
+  }
+  const mult = riskMultiplier(p);
+  return { hitter: hitter * mult, pitcher: pitcher * mult, total: (hitter + pitcher) * mult };
+}
+
+/**
+ * Total SGP. Two-way players have hitter+pitcher summed; pure players get one branch.
  * Depth/role is intentionally NOT applied — projections already reflect role.
  */
 export function computePlayerSGP(
@@ -395,18 +430,7 @@ export function computePlayerSGP(
   categories?: string[],
   baselines: LeagueRateBaselines = DEFAULT_BASELINES,
 ): number {
-  const denom = getDenominators(numTeams);
-  const cats = categorySet(categories);
-  let total = 0;
-  if (isPitcher(p) && hasPitcherStats(p)) total += pitcherSGP(p, denom, cats, baselines);
-  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) total += hitterSGP(p, denom, cats, baselines);
-  // Fallback: positions array is pitcher-only but no pitcher stats present → treat as hitter
-  // if hitter stats exist, else 0. Keeps legacy single-position synthetic fixtures working.
-  if (total === 0) {
-    if (hasHitterStats(p)) total = hitterSGP(p, denom, cats, baselines);
-    else if (hasPitcherStats(p)) total = pitcherSGP(p, denom, cats, baselines);
-  }
-  return total * riskMultiplier(p);
+  return computePlayerSGPParts(p, numTeams, categories, baselines).total;
 }
 
 function rosterSlots(league: LeagueConfig): Record<string, number> {
@@ -550,10 +574,14 @@ function computeParValues(
   const baselines = computeLeagueBaselines(eligible);
 
   // Precompute SGP per player once — replaces ~n² calls to computePlayerSGP across the
-  // assignment + replacement loops.
+  // assignment + replacement loops. Parts (hitter/pitcher breakdown) are kept so two-way
+  // players can be routed by their larger contribution side.
+  const sgpPartsByPlayer = new Map<string, PlayerSGPParts>();
   const sgpByPlayer = new Map<string, number>();
   for (const p of eligible) {
-    sgpByPlayer.set(String(p._id), computePlayerSGP(p, numTeams, league.categories, baselines));
+    const parts = computePlayerSGPParts(p, numTeams, league.categories, baselines);
+    sgpPartsByPlayer.set(String(p._id), parts);
+    sgpByPlayer.set(String(p._id), parts.total);
   }
 
   // Precompute the pre-assignment replacement level for each slot, once. Each slot's pool
@@ -584,8 +612,16 @@ function computeParValues(
   const isTwoWay = (p: PlayerLean) =>
     p.positions.includes("P") && p.positions.some((x) => x !== "P");
   for (const p of eligible) {
-    const sgp = sgpByPlayer.get(String(p._id)) ?? 0;
+    const parts = sgpPartsByPlayer.get(String(p._id)) ?? { hitter: 0, pitcher: 0, total: 0 };
+    const sgp = parts.total;
     const twoWay = isTwoWay(p);
+    // For two-way players, force the primary slot to the dominant side. Without this,
+    // bestPosition picks the slot with lowest replacement (typically P, since pitcher
+    // pools are deeper than UTIL pools) — which routes Ohtani-style hitters to the
+    // pitcher budget pot and compresses their dollar value. Hit-dominant two-way
+    // players exclude P from candidates; pitch-dominant exclude all non-P.
+    const hitterDominant = twoWay && parts.hitter >= parts.pitcher;
+    const pitcherDominant = twoWay && parts.pitcher > parts.hitter;
     let bestSar = -Infinity;
     let bestPosition: string | undefined;
     let bestPremiumSar = -Infinity;
@@ -594,7 +630,9 @@ function computeParValues(
       if (!eligibleAt(p, slot)) continue;
       const rep = preReplacementBySlot.get(slot) ?? 0;
       const sar = sgp - rep;
-      if (sar > bestSar) {
+      const restrictedFromPrimary =
+        (hitterDominant && slot === "P") || (pitcherDominant && slot !== "P");
+      if (!restrictedFromPrimary && sar > bestSar) {
         bestSar = sar;
         bestPosition = slot;
       }
