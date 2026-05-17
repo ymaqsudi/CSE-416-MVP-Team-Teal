@@ -280,20 +280,6 @@ function availability(p: PlayerLean): number {
 }
 
 /**
- * Weight given to Baseball Savant xStats when blending against the projection's rate stat.
- * Projections already incorporate Statcast signal upstream, but they're often slow to react
- * to in-season process changes. A 30% pull toward xba/xera regresses noisy outcomes toward
- * underlying contact quality without overriding the projection.
- */
-const STATCAST_BLEND = 0.3;
-
-function blendRate(projection: number | undefined, xStat: number | undefined, fallback: number): number {
-  const base = projection ?? fallback;
-  if (xStat == null || !Number.isFinite(xStat)) return base;
-  return (1 - STATCAST_BLEND) * base + STATCAST_BLEND * xStat;
-}
-
-/**
  * Expected-value haircut for risk. Replaces the old binary `risk === "High"` flag with a
  * continuous multiplier in [0.4, 1.0] combining injury status, risk tier, and age decline.
  * Returns 1.0 when no risk signals are present so the math is unchanged for the common case.
@@ -339,7 +325,7 @@ function hitterSGP(
   if (cats.has("R")) total += ((p.projR ?? 0) * avail) / denom.R;
   if (cats.has("SB")) total += ((p.projSB ?? 0) * avail) / denom.SB;
   if (cats.has("AVG")) {
-    const avg = blendRate(p.projAVG, p.xba, baselines.ba);
+    const avg = p.projAVG ?? baselines.ba;
     total += (avg - baselines.ba) / denom.AVG;
   }
   return Math.max(0, total);
@@ -357,7 +343,7 @@ function pitcherSGP(
   if (cats.has("K")) total += ((p.projK ?? 0) * avail) / denom.K;
   if (cats.has("SV")) total += ((p.projSV ?? 0) * avail) / denom.SV;
   if (cats.has("ERA")) {
-    const era = blendRate(p.projERA, p.xera, baselines.era);
+    const era = p.projERA ?? baselines.era;
     total += (baselines.era - era) / denom.ERA;
   }
   if (cats.has("WHIP")) {
