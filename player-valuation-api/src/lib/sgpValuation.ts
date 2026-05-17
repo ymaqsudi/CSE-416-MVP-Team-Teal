@@ -61,9 +61,83 @@ function getDenominators(numTeams: number): Denominators {
   };
 }
 
+/**
+ * Default rate-stat baselines used when no pool is available (standalone
+ * `computePlayerSGP` calls). Within `valuePool` these are replaced with
+ * playing-time-weighted means computed from the actual draftable pool, which
+ * makes the math scope-aware for AL/NL-only leagues.
+ */
 const LEAGUE_AVG_BA = 0.275;
 const LEAGUE_AVG_ERA = 4.2;
 const LEAGUE_AVG_WHIP = 1.28;
+
+export type LeagueRateBaselines = {
+  ba: number;
+  era: number;
+  whip: number;
+};
+
+const DEFAULT_BASELINES: LeagueRateBaselines = {
+  ba: LEAGUE_AVG_BA,
+  era: LEAGUE_AVG_ERA,
+  whip: LEAGUE_AVG_WHIP,
+};
+
+/**
+ * Shared eligibility gate for the valuation pool. Excludes minor-leaguers and
+ * 60-day IL players whose presence would bias both the replacement tier and
+ * the rate-stat baselines. Players with no `rosterStatus` (tests, legacy
+ * fixtures) are included.
+ */
+function isPoolEligible(p: PlayerLean): boolean {
+  if (p.isEligible === false) return false;
+  if (p.rosterStatus == null) return true;
+  return (
+    p.rosterStatus === "ActiveRoster" ||
+    p.rosterStatus === "InjuredList" ||
+    p.rosterStatus === "Bereavement"
+  );
+}
+
+/**
+ * Playing-time-weighted league averages over the draftable pool.
+ * BA is weighted by projected games, ERA/WHIP by projected innings — matching
+ * the way these rate stats are mathematically defined.
+ * Falls back to the module-level constants when a weight sum is zero so empty
+ * or projection-sparse test pools continue to behave as before.
+ */
+export function computeLeagueBaselines(pool: PlayerLean[]): LeagueRateBaselines {
+  let baNum = 0, baDen = 0;
+  let eraNum = 0, eraDen = 0;
+  let whipNum = 0, whipDen = 0;
+  for (const p of pool) {
+    if (!isPoolEligible(p)) continue;
+    if (isPitcher(p)) {
+      const ip = p.projIP;
+      if (ip != null && ip > 0) {
+        if (p.projERA != null && Number.isFinite(p.projERA)) {
+          eraNum += p.projERA * ip;
+          eraDen += ip;
+        }
+        if (p.projWHIP != null && Number.isFinite(p.projWHIP)) {
+          whipNum += p.projWHIP * ip;
+          whipDen += ip;
+        }
+      }
+    } else {
+      const g = p.projGames;
+      if (g != null && g > 0 && p.projAVG != null && Number.isFinite(p.projAVG)) {
+        baNum += p.projAVG * g;
+        baDen += g;
+      }
+    }
+  }
+  return {
+    ba: baDen > 0 ? baNum / baDen : LEAGUE_AVG_BA,
+    era: eraDen > 0 ? eraNum / eraDen : LEAGUE_AVG_ERA,
+    whip: whipDen > 0 ? whipNum / whipDen : LEAGUE_AVG_WHIP,
+  };
+}
 
 export type LeagueConfig = {
   numTeams: number;
@@ -252,7 +326,12 @@ export function riskMultiplier(p: PlayerLean): number {
   return mult;
 }
 
-function hitterSGP(p: PlayerLean, denom: Denominators, cats: CategorySet): number {
+function hitterSGP(
+  p: PlayerLean,
+  denom: Denominators,
+  cats: CategorySet,
+  baselines: LeagueRateBaselines,
+): number {
   const avail = hitterAvailability(p);
   let total = 0;
   if (cats.has("HR")) total += ((p.projHR ?? 0) * avail) / denom.HR;
@@ -260,25 +339,30 @@ function hitterSGP(p: PlayerLean, denom: Denominators, cats: CategorySet): numbe
   if (cats.has("R")) total += ((p.projR ?? 0) * avail) / denom.R;
   if (cats.has("SB")) total += ((p.projSB ?? 0) * avail) / denom.SB;
   if (cats.has("AVG")) {
-    const avg = blendRate(p.projAVG, p.xba, LEAGUE_AVG_BA);
-    total += (avg - LEAGUE_AVG_BA) / denom.AVG;
+    const avg = blendRate(p.projAVG, p.xba, baselines.ba);
+    total += (avg - baselines.ba) / denom.AVG;
   }
   return Math.max(0, total);
 }
 
-function pitcherSGP(p: PlayerLean, denom: Denominators, cats: CategorySet): number {
+function pitcherSGP(
+  p: PlayerLean,
+  denom: Denominators,
+  cats: CategorySet,
+  baselines: LeagueRateBaselines,
+): number {
   const avail = pitcherAvailability(p);
   let total = 0;
   if (cats.has("W")) total += ((p.projW ?? 0) * avail) / denom.W;
   if (cats.has("K")) total += ((p.projK ?? 0) * avail) / denom.K;
   if (cats.has("SV")) total += ((p.projSV ?? 0) * avail) / denom.SV;
   if (cats.has("ERA")) {
-    const era = blendRate(p.projERA, p.xera, LEAGUE_AVG_ERA);
-    total += (LEAGUE_AVG_ERA - era) / denom.ERA;
+    const era = blendRate(p.projERA, p.xera, baselines.era);
+    total += (baselines.era - era) / denom.ERA;
   }
   if (cats.has("WHIP")) {
-    const whip = p.projWHIP ?? LEAGUE_AVG_WHIP;
-    total += (LEAGUE_AVG_WHIP - whip) / denom.WHIP;
+    const whip = p.projWHIP ?? baselines.whip;
+    total += (baselines.whip - whip) / denom.WHIP;
   }
   return Math.max(0, total);
 }
@@ -300,17 +384,18 @@ export function computePlayerSGP(
   p: PlayerLean,
   numTeams = 12,
   categories?: string[],
+  baselines: LeagueRateBaselines = DEFAULT_BASELINES,
 ): number {
   const denom = getDenominators(numTeams);
   const cats = categorySet(categories);
   let total = 0;
-  if (isPitcher(p) && hasPitcherStats(p)) total += pitcherSGP(p, denom, cats);
-  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) total += hitterSGP(p, denom, cats);
+  if (isPitcher(p) && hasPitcherStats(p)) total += pitcherSGP(p, denom, cats, baselines);
+  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) total += hitterSGP(p, denom, cats, baselines);
   // Fallback: positions array is pitcher-only but no pitcher stats present → treat as hitter
   // if hitter stats exist, else 0. Keeps legacy single-position synthetic fixtures working.
   if (total === 0) {
-    if (hasHitterStats(p)) total = hitterSGP(p, denom, cats);
-    else if (hasPitcherStats(p)) total = pitcherSGP(p, denom, cats);
+    if (hasHitterStats(p)) total = hitterSGP(p, denom, cats, baselines);
+    else if (hasPitcherStats(p)) total = pitcherSGP(p, denom, cats, baselines);
   }
   return total * riskMultiplier(p);
 }
@@ -445,22 +530,17 @@ function computeParValues(
   // Gate the valuation pool to MLB-roster players. Minor-leaguers and 60-day IL
   // players inflate `eligible.length`, which drives the $1/player floor in Pass 4
   // and shrinks the distributable budget that flows to SAR-positive starters.
-  // Players with no `rosterStatus` set (tests, legacy fixtures) are included.
-  const eligible = pool.filter((p) => {
-    if (p.isEligible === false) return false;
-    if (p.rosterStatus == null) return true;
-    return (
-      p.rosterStatus === "ActiveRoster" ||
-      p.rosterStatus === "InjuredList" ||
-      p.rosterStatus === "Bereavement"
-    );
-  });
+  const eligible = pool.filter(isPoolEligible);
+
+  // Pool-derived rate-stat baselines — scope-aware when `pool` is AL/NL-filtered
+  // upstream by filterPoolByLeague.
+  const baselines = computeLeagueBaselines(eligible);
 
   // Precompute SGP per player once — replaces ~n² calls to computePlayerSGP across the
   // assignment + replacement loops.
   const sgpByPlayer = new Map<string, number>();
   for (const p of eligible) {
-    sgpByPlayer.set(String(p._id), computePlayerSGP(p, numTeams, league.categories));
+    sgpByPlayer.set(String(p._id), computePlayerSGP(p, numTeams, league.categories, baselines));
   }
 
   // Precompute the pre-assignment replacement level for each slot, once. Each slot's pool
