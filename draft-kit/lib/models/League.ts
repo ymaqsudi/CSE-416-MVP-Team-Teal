@@ -17,6 +17,8 @@ export interface ILeague extends Document {
   myTeamId: string;
   scope: "MLB" | "AL" | "NL";
   rosterSlots: Record<string, number>;
+  taxiSlots: number;
+  taxiDraftOrder: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -96,6 +98,15 @@ const LeagueSchema = new Schema<ILeague>(
     rosterSlots: {
       type: Schema.Types.Mixed,
       default: () => defaultRosterSlots(),
+    },
+    taxiSlots: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    taxiDraftOrder: {
+      type: [String],
+      default: [],
     },
   },
   {
