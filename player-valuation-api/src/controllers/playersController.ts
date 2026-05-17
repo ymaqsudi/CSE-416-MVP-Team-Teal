@@ -14,51 +14,62 @@ function isPitcher(doc: PlayerLean): boolean {
   return doc.positions.includes("P");
 }
 
-function projStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
-  if (isPitcher(doc)) {
-    const o = { w: doc.projW, era: doc.projERA, whip: doc.projWHIP, k: doc.projK, sv: doc.projSV, ip: doc.projIP };
-    if (Object.values(o).every((v) => v === undefined)) return undefined;
-    return o;
-  }
-  const o = { hr: doc.projHR, rbi: doc.projRBI, r: doc.projR, sb: doc.projSB, avg: doc.projAVG };
-  if (Object.values(o).every((v) => v === undefined)) return undefined;
-  return o;
+function compactBlock(o: Record<string, number | undefined>): Record<string, number | undefined> | undefined {
+  return Object.values(o).every((v) => v === undefined) ? undefined : o;
 }
 
-function prevStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
-  if (isPitcher(doc)) {
-    const o = { w: doc.prevW, era: doc.prevERA, whip: doc.prevWHIP, k: doc.prevK, sv: doc.prevSV, ip: doc.prevIP };
-    if (Object.values(o).every((v) => v === undefined)) return undefined;
-    return o;
-  }
-  const o = { games: doc.prevGames, hr: doc.prevHR, rbi: doc.prevRBI, r: doc.prevR, sb: doc.prevSB, avg: doc.prevAVG };
-  if (Object.values(o).every((v) => v === undefined)) return undefined;
-  return o;
+function hitterProjBlock(doc: PlayerLean) {
+  return compactBlock({ hr: doc.projHR, rbi: doc.projRBI, r: doc.projR, sb: doc.projSB, avg: doc.projAVG });
 }
-
-function savantStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
-  if (isPitcher(doc)) {
-    const o = {
-      xera: doc.xera, whiffPct: doc.whiffPct,
-      barrelPctAgainst: doc.barrelPctAgainst, hardHitPctAgainst: doc.hardHitPctAgainst,
-      exitVeloAgainst: doc.exitVeloAgainst, kPct: doc.kPct, bbPct: doc.bbPct,
-    };
-    if (Object.values(o).every((v) => v === undefined)) return undefined;
-    return o;
-  }
-  const o = {
+function pitcherProjBlock(doc: PlayerLean) {
+  return compactBlock({ w: doc.projW, era: doc.projERA, whip: doc.projWHIP, k: doc.projK, sv: doc.projSV, ip: doc.projIP });
+}
+function hitterPrevBlock(doc: PlayerLean) {
+  return compactBlock({ games: doc.prevGames, hr: doc.prevHR, rbi: doc.prevRBI, r: doc.prevR, sb: doc.prevSB, avg: doc.prevAVG });
+}
+function pitcherPrevBlock(doc: PlayerLean) {
+  return compactBlock({ w: doc.prevW, era: doc.prevERA, whip: doc.prevWHIP, k: doc.prevK, sv: doc.prevSV, ip: doc.prevIP });
+}
+function hitterSavantBlock(doc: PlayerLean) {
+  return compactBlock({
     xba: doc.xba, xslg: doc.xslg, xwoba: doc.xwoba,
     barrelPct: doc.barrelPct, hardHitPct: doc.hardHitPct,
     exitVelo: doc.exitVelo, kPct: doc.kPct, bbPct: doc.bbPct, sprintSpeed: doc.sprintSpeed,
-  };
-  if (Object.values(o).every((v) => v === undefined)) return undefined;
-  return o;
+  });
+}
+function pitcherSavantBlock(doc: PlayerLean) {
+  return compactBlock({
+    xera: doc.xera, whiffPct: doc.whiffPct,
+    barrelPctAgainst: doc.barrelPctAgainst, hardHitPctAgainst: doc.hardHitPctAgainst,
+    exitVeloAgainst: doc.exitVeloAgainst, kPct: doc.kPct, bbPct: doc.bbPct,
+  });
+}
+
+// `prevStats`/`projStats`/`savantStats` carry the player's primary-role block
+// (pitcher if positions include P, else hitter). Two-way players also receive
+// the secondary block via `hitter*`/`pitcher*` fields so the UI can render both.
+function projStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
+  return isPitcher(doc) ? pitcherProjBlock(doc) : hitterProjBlock(doc);
+}
+function prevStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
+  return isPitcher(doc) ? pitcherPrevBlock(doc) : hitterPrevBlock(doc);
+}
+function savantStatsBlock(doc: PlayerLean): Record<string, number | undefined> | undefined {
+  return isPitcher(doc) ? pitcherSavantBlock(doc) : hitterSavantBlock(doc);
 }
 
 function toPlayer(doc: PlayerLean) {
   const projStats = projStatsBlock(doc);
   const prevStats = prevStatsBlock(doc);
   const savantStats = savantStatsBlock(doc);
+  // Two-way players (Ohtani-style): emit the off-role blocks so the UI can show both.
+  const hitterProj = hitterProjBlock(doc);
+  const pitcherProj = pitcherProjBlock(doc);
+  const hitterPrev = hitterPrevBlock(doc);
+  const pitcherPrev = pitcherPrevBlock(doc);
+  const hitterSavant = hitterSavantBlock(doc);
+  const pitcherSavant = pitcherSavantBlock(doc);
+  const isTwoWay = hitterProj != null && pitcherProj != null;
   return {
     id: String(doc._id),
     mlbPlayerId: doc.mlbPlayerId ?? undefined,
@@ -79,6 +90,12 @@ function toPlayer(doc: PlayerLean) {
     ...(projStats && { projStats }),
     ...(prevStats && { prevStats }),
     ...(savantStats && { savantStats }),
+    ...(isTwoWay && hitterProj && { hitterProjStats: hitterProj }),
+    ...(isTwoWay && pitcherProj && { pitcherProjStats: pitcherProj }),
+    ...(isTwoWay && hitterPrev && { hitterPrevStats: hitterPrev }),
+    ...(isTwoWay && pitcherPrev && { pitcherPrevStats: pitcherPrev }),
+    ...(isTwoWay && hitterSavant && { hitterSavantStats: hitterSavant }),
+    ...(isTwoWay && pitcherSavant && { pitcherSavantStats: pitcherSavant }),
   };
 }
 

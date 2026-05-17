@@ -67,6 +67,13 @@ export interface Player {
   prevStats?: HitterStats | PitcherStats;
   projStats?: HitterStats | PitcherStats;
   savantStats?: HitterSavantStats | PitcherSavantStats;
+  // Populated for two-way players (e.g. Ohtani) so the UI can render both sides.
+  hitterPrevStats?: HitterStats;
+  pitcherPrevStats?: PitcherStats;
+  hitterProjStats?: HitterStats;
+  pitcherProjStats?: PitcherStats;
+  hitterSavantStats?: HitterSavantStats;
+  pitcherSavantStats?: PitcherSavantStats;
 }
 
 export interface Valuation {

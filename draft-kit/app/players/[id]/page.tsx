@@ -605,139 +605,197 @@ export default function PlayerDetailPage({
       </Card>
 
       {/* 2025 Stats */}
-      {player.prevStats && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">2025 Stats</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {player.positions.includes("P") ? (
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                {[
-                  { label: "W", value: (player.prevStats as PitcherStats).w },
-                  { label: "ERA", value: (player.prevStats as PitcherStats).era?.toFixed(2) },
-                  { label: "WHIP", value: (player.prevStats as PitcherStats).whip?.toFixed(2) },
-                  { label: "K", value: (player.prevStats as PitcherStats).k },
-                  { label: "SV", value: (player.prevStats as PitcherStats).sv },
-                  { label: "IP", value: (player.prevStats as PitcherStats).ip },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-muted-foreground">{label}</p>
-                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+      {(() => {
+        const hitterPrev = player.hitterPrevStats ?? (!player.positions.includes("P") ? (player.prevStats as HitterStats | undefined) : undefined);
+        const pitcherPrev = player.pitcherPrevStats ?? (player.positions.includes("P") ? (player.prevStats as PitcherStats | undefined) : undefined);
+        if (!hitterPrev && !pitcherPrev) return null;
+        const hitterRows = hitterPrev
+          ? [
+              { label: "G", value: hitterPrev.games },
+              { label: "HR", value: hitterPrev.hr },
+              { label: "RBI", value: hitterPrev.rbi },
+              { label: "R", value: hitterPrev.r },
+              { label: "SB", value: hitterPrev.sb },
+              { label: "AVG", value: hitterPrev.avg?.toFixed(3) },
+            ]
+          : [];
+        const pitcherRows = pitcherPrev
+          ? [
+              { label: "W", value: pitcherPrev.w },
+              { label: "ERA", value: pitcherPrev.era?.toFixed(2) },
+              { label: "WHIP", value: pitcherPrev.whip?.toFixed(2) },
+              { label: "K", value: pitcherPrev.k },
+              { label: "SV", value: pitcherPrev.sv },
+              { label: "IP", value: pitcherPrev.ip },
+            ]
+          : [];
+        const showHeaders = hitterPrev && pitcherPrev;
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">2025 Stats</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {hitterPrev && (
+                <div>
+                  {showHeaders && <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Hitting</p>}
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    {hitterRows.map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-muted-foreground">{label}</p>
+                        <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                {[
-                  { label: "G", value: (player.prevStats as HitterStats).games },
-                  { label: "HR", value: (player.prevStats as HitterStats).hr },
-                  { label: "RBI", value: (player.prevStats as HitterStats).rbi },
-                  { label: "R", value: (player.prevStats as HitterStats).r },
-                  { label: "SB", value: (player.prevStats as HitterStats).sb },
-                  { label: "AVG", value: (player.prevStats as HitterStats).avg?.toFixed(3) },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-muted-foreground">{label}</p>
-                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                </div>
+              )}
+              {pitcherPrev && (
+                <div>
+                  {showHeaders && <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Pitching</p>}
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    {pitcherRows.map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-muted-foreground">{label}</p>
+                        <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Baseball Savant (Statcast) */}
-      {player.savantStats && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Baseball Savant (Statcast)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {player.positions.includes("P") ? (
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                {[
-                  { label: "xERA", value: (player.savantStats as PitcherSavantStats).xera?.toFixed(2) },
-                  { label: "Whiff%", value: (player.savantStats as PitcherSavantStats).whiffPct != null ? `${((player.savantStats as PitcherSavantStats).whiffPct! * 100).toFixed(1)}%` : undefined },
-                  { label: "K%", value: (player.savantStats as PitcherSavantStats).kPct != null ? `${((player.savantStats as PitcherSavantStats).kPct! * 100).toFixed(1)}%` : undefined },
-                  { label: "BB%", value: (player.savantStats as PitcherSavantStats).bbPct != null ? `${((player.savantStats as PitcherSavantStats).bbPct! * 100).toFixed(1)}%` : undefined },
-                  { label: "Barrel%", value: (player.savantStats as PitcherSavantStats).barrelPctAgainst != null ? `${((player.savantStats as PitcherSavantStats).barrelPctAgainst! * 100).toFixed(1)}%` : undefined },
-                  { label: "Hard-Hit%", value: (player.savantStats as PitcherSavantStats).hardHitPctAgainst != null ? `${((player.savantStats as PitcherSavantStats).hardHitPctAgainst! * 100).toFixed(1)}%` : undefined },
-                  { label: "Exit Velo", value: (player.savantStats as PitcherSavantStats).exitVeloAgainst?.toFixed(1) },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-muted-foreground">{label}</p>
-                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+      {(() => {
+        const hitterSavant = player.hitterSavantStats ?? (!player.positions.includes("P") ? (player.savantStats as HitterSavantStats | undefined) : undefined);
+        const pitcherSavant = player.pitcherSavantStats ?? (player.positions.includes("P") ? (player.savantStats as PitcherSavantStats | undefined) : undefined);
+        if (!hitterSavant && !pitcherSavant) return null;
+        const pct = (v: number | undefined) => (v != null ? `${(v * 100).toFixed(1)}%` : undefined);
+        const hitterRows = hitterSavant
+          ? [
+              { label: "xBA", value: hitterSavant.xba?.toFixed(3) },
+              { label: "xSLG", value: hitterSavant.xslg?.toFixed(3) },
+              { label: "xwOBA", value: hitterSavant.xwoba?.toFixed(3) },
+              { label: "Barrel%", value: pct(hitterSavant.barrelPct) },
+              { label: "Hard-Hit%", value: pct(hitterSavant.hardHitPct) },
+              { label: "Exit Velo", value: hitterSavant.exitVelo?.toFixed(1) },
+              { label: "K%", value: pct(hitterSavant.kPct) },
+              { label: "BB%", value: pct(hitterSavant.bbPct) },
+              { label: "Sprint Speed", value: hitterSavant.sprintSpeed?.toFixed(1) },
+            ]
+          : [];
+        const pitcherRows = pitcherSavant
+          ? [
+              { label: "xERA", value: pitcherSavant.xera?.toFixed(2) },
+              { label: "Whiff%", value: pct(pitcherSavant.whiffPct) },
+              { label: "K%", value: pct(pitcherSavant.kPct) },
+              { label: "BB%", value: pct(pitcherSavant.bbPct) },
+              { label: "Barrel%", value: pct(pitcherSavant.barrelPctAgainst) },
+              { label: "Hard-Hit%", value: pct(pitcherSavant.hardHitPctAgainst) },
+              { label: "Exit Velo", value: pitcherSavant.exitVeloAgainst?.toFixed(1) },
+            ]
+          : [];
+        const showHeaders = hitterSavant && pitcherSavant;
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Baseball Savant (Statcast)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {hitterSavant && (
+                <div>
+                  {showHeaders && <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Hitting</p>}
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    {hitterRows.map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-muted-foreground">{label}</p>
+                        <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                {[
-                  { label: "xBA", value: (player.savantStats as HitterSavantStats).xba?.toFixed(3) },
-                  { label: "xSLG", value: (player.savantStats as HitterSavantStats).xslg?.toFixed(3) },
-                  { label: "xwOBA", value: (player.savantStats as HitterSavantStats).xwoba?.toFixed(3) },
-                  { label: "Barrel%", value: (player.savantStats as HitterSavantStats).barrelPct != null ? `${((player.savantStats as HitterSavantStats).barrelPct! * 100).toFixed(1)}%` : undefined },
-                  { label: "Hard-Hit%", value: (player.savantStats as HitterSavantStats).hardHitPct != null ? `${((player.savantStats as HitterSavantStats).hardHitPct! * 100).toFixed(1)}%` : undefined },
-                  { label: "Exit Velo", value: (player.savantStats as HitterSavantStats).exitVelo?.toFixed(1) },
-                  { label: "K%", value: (player.savantStats as HitterSavantStats).kPct != null ? `${((player.savantStats as HitterSavantStats).kPct! * 100).toFixed(1)}%` : undefined },
-                  { label: "BB%", value: (player.savantStats as HitterSavantStats).bbPct != null ? `${((player.savantStats as HitterSavantStats).bbPct! * 100).toFixed(1)}%` : undefined },
-                  { label: "Sprint Speed", value: (player.savantStats as HitterSavantStats).sprintSpeed?.toFixed(1) },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-muted-foreground">{label}</p>
-                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                </div>
+              )}
+              {pitcherSavant && (
+                <div>
+                  {showHeaders && <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Pitching</p>}
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    {pitcherRows.map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-muted-foreground">{label}</p>
+                        <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* 2026 Projections */}
-      {player.projStats && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">2026 Projections</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {player.positions.includes("P") ? (
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                {[
-                  { label: "W", value: (player.projStats as PitcherStats).w },
-                  { label: "ERA", value: (player.projStats as PitcherStats).era?.toFixed(2) },
-                  { label: "WHIP", value: (player.projStats as PitcherStats).whip?.toFixed(2) },
-                  { label: "K", value: (player.projStats as PitcherStats).k },
-                  { label: "SV", value: (player.projStats as PitcherStats).sv },
-                  { label: "IP", value: (player.projStats as PitcherStats).ip },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-muted-foreground">{label}</p>
-                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+      {(() => {
+        const hitterProj = player.hitterProjStats ?? (!player.positions.includes("P") ? (player.projStats as HitterStats | undefined) : undefined);
+        const pitcherProj = player.pitcherProjStats ?? (player.positions.includes("P") ? (player.projStats as PitcherStats | undefined) : undefined);
+        if (!hitterProj && !pitcherProj) return null;
+        const hitterRows = hitterProj
+          ? [
+              { label: "HR", value: hitterProj.hr },
+              { label: "RBI", value: hitterProj.rbi },
+              { label: "R", value: hitterProj.r },
+              { label: "SB", value: hitterProj.sb },
+              { label: "AVG", value: hitterProj.avg?.toFixed(3) },
+            ]
+          : [];
+        const pitcherRows = pitcherProj
+          ? [
+              { label: "W", value: pitcherProj.w },
+              { label: "ERA", value: pitcherProj.era?.toFixed(2) },
+              { label: "WHIP", value: pitcherProj.whip?.toFixed(2) },
+              { label: "K", value: pitcherProj.k },
+              { label: "SV", value: pitcherProj.sv },
+              { label: "IP", value: pitcherProj.ip },
+            ]
+          : [];
+        const showHeaders = hitterProj && pitcherProj;
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">2026 Projections</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {hitterProj && (
+                <div>
+                  {showHeaders && <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Hitting</p>}
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    {hitterRows.map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-muted-foreground">{label}</p>
+                        <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                {[
-                  { label: "HR", value: (player.projStats as HitterStats).hr },
-                  { label: "RBI", value: (player.projStats as HitterStats).rbi },
-                  { label: "R", value: (player.projStats as HitterStats).r },
-                  { label: "SB", value: (player.projStats as HitterStats).sb },
-                  { label: "AVG", value: (player.projStats as HitterStats).avg?.toFixed(3) },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-muted-foreground">{label}</p>
-                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                </div>
+              )}
+              {pitcherProj && (
+                <div>
+                  {showHeaders && <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Pitching</p>}
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    {pitcherRows.map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-muted-foreground">{label}</p>
+                        <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Assignment Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
