@@ -159,10 +159,21 @@ export type LeagueConfig = {
    * naturally qualify via their off-role slot.
    */
   flexPremium?: number;
+  /**
+   * Weight applied to last year's stats when blending into SGP.
+   * Defaults to 0.15 (85% projection / 15% prior). Each side (hitter/pitcher) is
+   * blended independently and the prior side is skipped if its sample is too thin.
+   */
+  priorYearWeight?: number;
 };
 
 export const DEFAULT_HITTER_BUDGET_SHARE = 0.68;
 export const DEFAULT_FLEX_PREMIUM = 0.15;
+export const DEFAULT_PRIOR_YEAR_WEIGHT = 0.15;
+
+/** Sample-size gates for blending prior-year SGP. Below these, prev side is ignored. */
+const PRIOR_HITTER_GAMES_THRESHOLD = 50;
+const PRIOR_PITCHER_IP_THRESHOLD = 30;
 
 /**
  * Real fielding positions that qualify a player's "second best slot" for the
@@ -394,15 +405,52 @@ export type PlayerSGPParts = {
 };
 
 /**
+ * Synthetic view of a player with last year's stats slotted into the `proj*` fields
+ * so the standard hitterSGP/pitcherSGP formulas can be reused without forking.
+ * `projGames` ← `prevGames` and `projIP` ← `prevIP` preserve the availability haircut
+ * relative to a full season, matching how the formula treats projections.
+ */
+function playerAsPrev(p: PlayerLean): PlayerLean {
+  return {
+    ...p,
+    projGames: p.prevGames,
+    projHR: p.prevHR,
+    projRBI: p.prevRBI,
+    projR: p.prevR,
+    projSB: p.prevSB,
+    projAVG: p.prevAVG,
+    projW: p.prevW,
+    projERA: p.prevERA,
+    projWHIP: p.prevWHIP,
+    projK: p.prevK,
+    projSV: p.prevSV,
+    projIP: p.prevIP,
+  };
+}
+
+function hasPriorHitterSample(p: PlayerLean): boolean {
+  return (p.prevGames ?? 0) >= PRIOR_HITTER_GAMES_THRESHOLD;
+}
+
+function hasPriorPitcherSample(p: PlayerLean): boolean {
+  return (p.prevIP ?? 0) >= PRIOR_PITCHER_IP_THRESHOLD;
+}
+
+/**
  * Per-side SGP breakdown. Two-way players (e.g. Ohtani — positions ["P","DH"] with
  * both stat sets) get both branches; pure pitchers/hitters get one. The riskMultiplier
  * is applied uniformly so callers can route players by larger-side contribution.
+ *
+ * Optional `priorYearWeight` (0..1) blends prior-year SGP into each side independently.
+ * Prior side is skipped when its sample falls below the threshold (rookies, partial
+ * seasons), so a thin prior year never drags a strong projection down.
  */
 export function computePlayerSGPParts(
   p: PlayerLean,
   numTeams = 12,
   categories?: string[],
   baselines: LeagueRateBaselines = DEFAULT_BASELINES,
+  priorYearWeight = 0,
 ): PlayerSGPParts {
   const denom = getDenominators(numTeams);
   const cats = categorySet(categories);
@@ -415,6 +463,16 @@ export function computePlayerSGPParts(
   if (hitter === 0 && pitcher === 0) {
     if (hasHitterStats(p)) hitter = hitterSGP(p, denom, cats, baselines);
     else if (hasPitcherStats(p)) pitcher = pitcherSGP(p, denom, cats, baselines);
+  }
+  if (priorYearWeight > 0) {
+    const prev = playerAsPrev(p);
+    const w = priorYearWeight;
+    if (hasPriorHitterSample(p) && hitter > 0) {
+      hitter = (1 - w) * hitter + w * hitterSGP(prev, denom, cats, baselines);
+    }
+    if (hasPriorPitcherSample(p) && pitcher > 0) {
+      pitcher = (1 - w) * pitcher + w * pitcherSGP(prev, denom, cats, baselines);
+    }
   }
   const mult = riskMultiplier(p);
   return { hitter: hitter * mult, pitcher: pitcher * mult, total: (hitter + pitcher) * mult };
@@ -576,10 +634,11 @@ function computeParValues(
   // Precompute SGP per player once — replaces ~n² calls to computePlayerSGP across the
   // assignment + replacement loops. Parts (hitter/pitcher breakdown) are kept so two-way
   // players can be routed by their larger contribution side.
+  const priorYearWeight = league.priorYearWeight ?? DEFAULT_PRIOR_YEAR_WEIGHT;
   const sgpPartsByPlayer = new Map<string, PlayerSGPParts>();
   const sgpByPlayer = new Map<string, number>();
   for (const p of eligible) {
-    const parts = computePlayerSGPParts(p, numTeams, league.categories, baselines);
+    const parts = computePlayerSGPParts(p, numTeams, league.categories, baselines, priorYearWeight);
     sgpPartsByPlayer.set(String(p._id), parts);
     sgpByPlayer.set(String(p._id), parts.total);
   }
