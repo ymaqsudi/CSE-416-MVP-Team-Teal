@@ -736,10 +736,27 @@ function computeParValues(
   const flexPremium = league.flexPremium ?? DEFAULT_FLEX_PREMIUM;
   for (const [id, { p, sgp, bestPosition, secondBestSar }] of assignments) {
     const rep = bestPosition ? (replacementByPos.get(bestPosition) ?? 0) : 0;
-    const baseSar = Math.max(0, sgp - rep);
-    // Flex premium only fires when both the primary and secondary slots are
-    // value-positive; it cannot rescue a sub-replacement player.
-    const flexBonus = baseSar > 0 && secondBestSar > 0 ? flexPremium * secondBestSar : 0;
+    const twoWay = isTwoWay(p);
+    let baseSar: number;
+    let flexBonus: number;
+    if (twoWay) {
+      // Two-way players (Ohtani) fill one roster slot but produce both stat lines.
+      // Their true SAR is what they contribute beyond replacement at *both* slots —
+      // i.e. they also save the cost of drafting a marginal pitcher (or hitter).
+      // This replaces the flex bonus, which would otherwise double-count their
+      // off-role stats (already included in `sgp`).
+      const offRoleRep =
+        bestPosition === "P"
+          ? (replacementByPos.get("UTIL") ?? 0)
+          : (replacementByPos.get("P") ?? 0);
+      baseSar = Math.max(0, sgp - rep - offRoleRep);
+      flexBonus = 0;
+    } else {
+      baseSar = Math.max(0, sgp - rep);
+      // Flex premium only fires when both the primary and secondary slots are
+      // value-positive; it cannot rescue a sub-replacement player.
+      flexBonus = baseSar > 0 && secondBestSar > 0 ? flexPremium * secondBestSar : 0;
+    }
     const above = baseSar + flexBonus;
     if (bestPosition === "P") sumAbovePitchers += above;
     else sumAboveHitters += above;
@@ -821,10 +838,12 @@ export function valuePool(
     if (entry.above > 0) parts.push("SGP above replacement");
     else parts.push("At or below replacement");
     if (entry.p.depthRole === "Starter") parts.push("starting role");
-    if (entry.flexBonus > 0) {
-      const isTwoWay =
-        entry.p.positions.includes("P") && entry.p.positions.some((x) => x !== "P");
-      parts.push(isTwoWay ? "two-way flexibility premium" : "multi-position flex premium");
+    const twoWay =
+      entry.p.positions.includes("P") && entry.p.positions.some((x) => x !== "P");
+    if (twoWay) {
+      parts.push("two-way player (credit for both stat lines, less off-role replacement)");
+    } else if (entry.flexBonus > 0) {
+      parts.push("multi-position flex premium");
     }
     const note = riskNote(entry.p);
     if (note) parts.push(note);
