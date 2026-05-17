@@ -326,7 +326,7 @@ function hitterSGP(
   if (cats.has("SB")) total += ((p.projSB ?? 0) * avail) / denom.SB;
   if (cats.has("AVG")) {
     const avg = p.projAVG ?? baselines.ba;
-    total += (avg - baselines.ba) / denom.AVG;
+    total += ((avg - baselines.ba) / denom.AVG) * avail;
   }
   return Math.max(0, total);
 }
@@ -344,11 +344,11 @@ function pitcherSGP(
   if (cats.has("SV")) total += ((p.projSV ?? 0) * avail) / denom.SV;
   if (cats.has("ERA")) {
     const era = p.projERA ?? baselines.era;
-    total += (baselines.era - era) / denom.ERA;
+    total += ((baselines.era - era) / denom.ERA) * avail;
   }
   if (cats.has("WHIP")) {
     const whip = p.projWHIP ?? baselines.whip;
-    total += (baselines.whip - whip) / denom.WHIP;
+    total += ((baselines.whip - whip) / denom.WHIP) * avail;
   }
   return Math.max(0, total);
 }
