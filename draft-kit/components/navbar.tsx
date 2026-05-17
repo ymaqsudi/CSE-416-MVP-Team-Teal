@@ -25,6 +25,7 @@ type StoredUser = {
 type League = {
   _id: string;
   leagueName: string;
+  taxiSlots?: number;
 };
 
 export function Navbar() {
@@ -148,6 +149,24 @@ export function Navbar() {
               {link.label}
             </Link>
           ))}
+
+          {(() => {
+            const selected = leagues.find((l) => l._id === selectedLeagueId);
+            if (!selected || !Number(selected.taxiSlots ?? 0)) return null;
+            return (
+              <Link
+                href="/taxi-draft"
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                  pathname === "/taxi-draft"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                Taxi Draft
+              </Link>
+            );
+          })()}
 
           {isHydrated && user && leagues.length > 0 ? (
             <div className="ml-2 w-48">
