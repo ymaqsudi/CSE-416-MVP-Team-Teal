@@ -29,6 +29,28 @@ export interface PitcherStats {
   ip?: number;
 }
 
+export interface HitterSavantStats {
+  xba?: number;
+  xslg?: number;
+  xwoba?: number;
+  barrelPct?: number;
+  hardHitPct?: number;
+  exitVelo?: number;
+  kPct?: number;
+  bbPct?: number;
+  sprintSpeed?: number;
+}
+
+export interface PitcherSavantStats {
+  xera?: number;
+  whiffPct?: number;
+  barrelPctAgainst?: number;
+  hardHitPctAgainst?: number;
+  exitVeloAgainst?: number;
+  kPct?: number;
+  bbPct?: number;
+}
+
 export interface Player {
   id: string;              // stable unique id
   name: string;
@@ -44,6 +66,7 @@ export interface Player {
   injuryReturn?: string | null;       // ISO date string
   prevStats?: HitterStats | PitcherStats;
   projStats?: HitterStats | PitcherStats;
+  savantStats?: HitterSavantStats | PitcherSavantStats;
 }
 
 export interface Valuation {

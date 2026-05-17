@@ -2,7 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Player, Valuation, HitterStats, PitcherStats } from "@/lib/shared/types";
+import { Player, Valuation, HitterStats, PitcherStats, HitterSavantStats, PitcherSavantStats } from "@/lib/shared/types";
 import { getEligibleSlots } from "@/lib/shared/eligibility";
 import { apiClient } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -636,6 +636,54 @@ export default function PlayerDetailPage({
                   { label: "R", value: (player.prevStats as HitterStats).r },
                   { label: "SB", value: (player.prevStats as HitterStats).sb },
                   { label: "AVG", value: (player.prevStats as HitterStats).avg?.toFixed(3) },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Baseball Savant (Statcast) */}
+      {player.savantStats && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Baseball Savant (Statcast)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {player.positions.includes("P") ? (
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {[
+                  { label: "xERA", value: (player.savantStats as PitcherSavantStats).xera?.toFixed(2) },
+                  { label: "Whiff%", value: (player.savantStats as PitcherSavantStats).whiffPct != null ? `${((player.savantStats as PitcherSavantStats).whiffPct! * 100).toFixed(1)}%` : undefined },
+                  { label: "K%", value: (player.savantStats as PitcherSavantStats).kPct != null ? `${((player.savantStats as PitcherSavantStats).kPct! * 100).toFixed(1)}%` : undefined },
+                  { label: "BB%", value: (player.savantStats as PitcherSavantStats).bbPct != null ? `${((player.savantStats as PitcherSavantStats).bbPct! * 100).toFixed(1)}%` : undefined },
+                  { label: "Barrel%", value: (player.savantStats as PitcherSavantStats).barrelPctAgainst != null ? `${((player.savantStats as PitcherSavantStats).barrelPctAgainst! * 100).toFixed(1)}%` : undefined },
+                  { label: "Hard-Hit%", value: (player.savantStats as PitcherSavantStats).hardHitPctAgainst != null ? `${((player.savantStats as PitcherSavantStats).hardHitPctAgainst! * 100).toFixed(1)}%` : undefined },
+                  { label: "Exit Velo", value: (player.savantStats as PitcherSavantStats).exitVeloAgainst?.toFixed(1) },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-muted-foreground">{label}</p>
+                    <p className="font-medium mt-0.5">{value ?? "—"}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {[
+                  { label: "xBA", value: (player.savantStats as HitterSavantStats).xba?.toFixed(3) },
+                  { label: "xSLG", value: (player.savantStats as HitterSavantStats).xslg?.toFixed(3) },
+                  { label: "xwOBA", value: (player.savantStats as HitterSavantStats).xwoba?.toFixed(3) },
+                  { label: "Barrel%", value: (player.savantStats as HitterSavantStats).barrelPct != null ? `${((player.savantStats as HitterSavantStats).barrelPct! * 100).toFixed(1)}%` : undefined },
+                  { label: "Hard-Hit%", value: (player.savantStats as HitterSavantStats).hardHitPct != null ? `${((player.savantStats as HitterSavantStats).hardHitPct! * 100).toFixed(1)}%` : undefined },
+                  { label: "Exit Velo", value: (player.savantStats as HitterSavantStats).exitVelo?.toFixed(1) },
+                  { label: "K%", value: (player.savantStats as HitterSavantStats).kPct != null ? `${((player.savantStats as HitterSavantStats).kPct! * 100).toFixed(1)}%` : undefined },
+                  { label: "BB%", value: (player.savantStats as HitterSavantStats).bbPct != null ? `${((player.savantStats as HitterSavantStats).bbPct! * 100).toFixed(1)}%` : undefined },
+                  { label: "Sprint Speed", value: (player.savantStats as HitterSavantStats).sprintSpeed?.toFixed(1) },
                 ].map(({ label, value }) => (
                   <div key={label}>
                     <p className="text-muted-foreground">{label}</p>
