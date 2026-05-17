@@ -33,6 +33,8 @@ type League = {
   myTeamId?: string;
   scope?: "MLB" | "AL" | "NL";
   rosterSlots?: Record<string, number>;
+  taxiSlots?: number;
+  taxiDraftOrder?: string[];
 };
 
 const HITTER_SLOTS = ["C", "1B", "2B", "3B", "SS", "CI", "MI", "OF", "UTIL"] as const;
@@ -61,6 +63,8 @@ export default function LeagueSettingsPage() {
   const [scope, setScope] = useState<"MLB" | "AL" | "NL">("MLB");
   const [rosterSlots, setRosterSlots] = useState<Record<string, number>>({ ...DEFAULT_ROSTER_SLOTS });
   const rosterTotal = Object.values(rosterSlots).reduce((s, n) => s + (Number(n) || 0), 0);
+  const [taxiSlots, setTaxiSlots] = useState<string>("0");
+  const [taxiDraftOrder, setTaxiDraftOrder] = useState<string[]>([]);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -122,6 +126,16 @@ export default function LeagueSettingsPage() {
               ? { ...DEFAULT_ROSTER_SLOTS, ...existingLeague.rosterSlots }
               : { ...DEFAULT_ROSTER_SLOTS },
           );
+          setTaxiSlots(String(existingLeague.taxiSlots ?? 0));
+          const teamIds = (existingLeague.teams ?? []).map((t) => t.id);
+          const storedOrder = (existingLeague.taxiDraftOrder ?? []).filter((tid) =>
+            teamIds.includes(tid),
+          );
+          setTaxiDraftOrder(
+            storedOrder.length === teamIds.length && teamIds.length > 0
+              ? storedOrder
+              : teamIds,
+          );
         }
       } catch (err) {
         console.error("Load league settings error:", err);
@@ -133,6 +147,23 @@ export default function LeagueSettingsPage() {
 
     loadExistingLeague();
   }, []);
+
+  // keep taxi draft order in sync with the current teams list
+  useEffect(() => {
+    setTaxiDraftOrder((prev) => {
+      const teamIds = teams.map((t) => t.id);
+      const filtered = prev.filter((id) => teamIds.includes(id));
+      const missing = teamIds.filter((id) => !filtered.includes(id));
+      const next = [...filtered, ...missing];
+      if (
+        next.length === prev.length &&
+        next.every((id, i) => id === prev[i])
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [teams]);
 
 
   function handleCreateNewLeague() {
@@ -146,6 +177,8 @@ export default function LeagueSettingsPage() {
     setMyTeamId("");
     setScope("MLB");
     setRosterSlots({ ...DEFAULT_ROSTER_SLOTS });
+    setTaxiSlots("0");
+    setTaxiDraftOrder([]);
     setError("");
     setSuccess("");
     localStorage.removeItem("draftkit_leagueId");
@@ -227,6 +260,8 @@ export default function LeagueSettingsPage() {
           myTeamId,
           scope,
           rosterSlots,
+          taxiSlots: Math.max(0, Math.floor(Number(taxiSlots) || 0)),
+          taxiDraftOrder,
         }),
       });
 
@@ -427,6 +462,83 @@ export default function LeagueSettingsPage() {
             </p>
           </div>
 
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Taxi Squad
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono w-24 shrink-0">Slots / team</span>
+              <Input
+                type="number"
+                min={0}
+                value={taxiSlots}
+                onChange={(e) => setTaxiSlots(e.target.value)}
+                disabled={isLoading}
+                className="h-8"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Number of reserve / prospect slots per team. Set to 0 to disable the taxi draft.
+            </p>
+            {Number(taxiSlots) > 0 && taxiDraftOrder.length > 0 ? (
+              <div className="space-y-2 pt-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase">
+                  Taxi Draft Order
+                </p>
+                <div className="space-y-1">
+                  {taxiDraftOrder.map((tid, idx) => {
+                    const team = teams.find((t) => t.id === tid);
+                    if (!team) return null;
+                    return (
+                      <div
+                        key={tid}
+                        className="flex items-center gap-2 rounded border px-2 py-1"
+                      >
+                        <span className="text-xs text-muted-foreground w-6 shrink-0 font-mono">
+                          {idx + 1}.
+                        </span>
+                        <span className="flex-1 text-sm">{team.name}</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isLoading || idx === 0}
+                          onClick={() =>
+                            setTaxiDraftOrder((prev) => {
+                              const next = [...prev];
+                              [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                              return next;
+                            })
+                          }
+                        >
+                          ↑
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isLoading || idx === taxiDraftOrder.length - 1}
+                          onClick={() =>
+                            setTaxiDraftOrder((prev) => {
+                              const next = [...prev];
+                              [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                              return next;
+                            })
+                          }
+                        >
+                          ↓
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Reference order shown on the taxi draft page. Picks may still be entered in any order.
+                </p>
+              </div>
+            ) : null}
+          </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
