@@ -41,12 +41,8 @@ const BASE_DENOM_12T: Denominators = {
   W: 3,
   ERA: 0.15,
   WHIP: 0.025,
-  // K and SV were nudged halfway toward the empirical adjacent-team spread surfaced by
-  // scripts/auditDenominators.ts (K ~41, SV ~9 across 200 random partitions). The full
-  // empirical values likely overshoot a real auction's spread; halving the move is a
-  // conservative correction to stop overvaluing strikeout pitchers and closers.
-  K: 30,
-  SV: 6,
+  K: 26,
+  SV: 5,
 };
 
 function getDenominators(numTeams: number): Denominators {
