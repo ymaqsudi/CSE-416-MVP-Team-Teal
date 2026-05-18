@@ -419,10 +419,19 @@ export type PlayerSGPParts = {
 };
 
 /**
- * Pull the projection's rate stats toward Statcast expected values (xBA, xERA).
+ * Modern-era league mean: a pitcher faces about 4.3 batters per inning. Used to convert
+ * between projK (counting) and K-rate (per PA) when blending with Savant kPct.
+ */
+const BATTERS_FACED_PER_IP = 4.3;
+
+/**
+ * Pull the projection's rate stats toward Statcast expected values.
+ *   - hitter projAVG ← xba
+ *   - pitcher projERA ← xera
+ *   - pitcher projK ← derived from xK rate (kPct from Savant) × projected workload
  * Applied only to the projection-side SGP — the prior-side path runs through
  * `playerAsPrev` and must not inherit a current-batted-ball regression on top of
- * historical stats. No-op when the xStat is missing.
+ * historical stats. Each branch is independently no-op when the input is missing.
  */
 function applySavantRegression(p: PlayerLean): PlayerLean {
   const w = SAVANT_REGRESSION_WEIGHT;
@@ -432,6 +441,18 @@ function applySavantRegression(p: PlayerLean): PlayerLean {
   }
   if (p.projERA != null && p.xera != null && Number.isFinite(p.xera)) {
     out = { ...out, projERA: (1 - w) * p.projERA + w * p.xera };
+  }
+  if (
+    p.projK != null &&
+    p.projIP != null && p.projIP > 0 &&
+    p.kPct != null && Number.isFinite(p.kPct)
+  ) {
+    // Convert projK to an implied K-rate, blend with Savant's measured kPct, then back
+    // out the new counting stat at the projected workload. A pitcher whose actual K%
+    // beat his projected K% gets a small bump (and vice versa) without ever changing IP.
+    const impliedKPct = (p.projK / (p.projIP * BATTERS_FACED_PER_IP)) * 100;
+    const blendedKPct = (1 - w) * impliedKPct + w * p.kPct;
+    out = { ...out, projK: Math.round((blendedKPct / 100) * p.projIP * BATTERS_FACED_PER_IP) };
   }
   return out;
 }

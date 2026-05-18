@@ -270,6 +270,14 @@ test("computePlayerSGP: blends xera toward Statcast for pitchers", () => {
   assert.ok(computePlayerSGP(better) > computePlayerSGP(matching));
 });
 
+test("computePlayerSGP: blends kPct toward Statcast for pitchers", () => {
+  // 180 IP × 4.3 BF/IP × ~20% K-rate ≈ 155 K. One pitcher has elite Savant kPct (32%),
+  // the other matches the projection's implied rate — elite kPct should bump SGP.
+  const matching = pitcher({ projK: 155, projIP: 180, kPct: 20 });
+  const elite    = pitcher({ projK: 155, projIP: 180, kPct: 32 });
+  assert.ok(computePlayerSGP(elite) > computePlayerSGP(matching));
+});
+
 test("computePlayerSGP: missing xStats degrades gracefully (no NaN)", () => {
   const noStatcast = hitter({ projAVG: 0.275, xba: undefined });
   const sgp = computePlayerSGP(noStatcast);
