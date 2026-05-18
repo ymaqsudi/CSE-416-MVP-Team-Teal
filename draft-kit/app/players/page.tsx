@@ -105,6 +105,8 @@ export default function PlayersPage() {
   const [leagueScope, setLeagueScope] = useState<LeagueScope>("MLB");
   const [leagueCategories, setLeagueCategories] = useState<string[]>([]);
   const [leagueRosterSlots, setLeagueRosterSlots] = useState<Record<string, number> | null>(null);
+  const [leagueNumTeams, setLeagueNumTeams] = useState<number | null>(null);
+  const [leagueBudget, setLeagueBudget] = useState<number | null>(null);
   const [customPlayers, setCustomPlayers] = useState<Player[]>([]);
   const [showAddPlayerDialog, setShowAddPlayerDialog] = useState(false);
   const [addPlayerLoading, setAddPlayerLoading] = useState(false);
@@ -144,6 +146,8 @@ export default function PlayersPage() {
         if (leagueCategories.length > 0) params.set("categories", leagueCategories.join(","));
         const encodedSlots = encodeRosterSlots(leagueRosterSlots);
         if (encodedSlots) params.set("rosterSlots", encodedSlots);
+        if (leagueNumTeams != null) params.set("numTeams", String(leagueNumTeams));
+        if (leagueBudget != null) params.set("budget", String(leagueBudget));
         const qs = params.toString() ? `?${params.toString()}` : "";
         const res = await fetch(`/api/valuation/valuations/all${qs}`);
         if (!res.ok) return;
@@ -158,7 +162,7 @@ export default function PlayersPage() {
       }
     }
     fetchValuations();
-  }, [leagueScope, leagueCategories, leagueRosterSlots]);
+  }, [leagueScope, leagueCategories, leagueRosterSlots, leagueNumTeams, leagueBudget]);
 
   useEffect(() => {
     const storedLeagueId = localStorage.getItem("draftkit_leagueId");
@@ -179,7 +183,7 @@ export default function PlayersPage() {
         if (!res.ok) return;
         const data = await res.json();
         const league =
-          (data.leagues ?? []).find((l: { _id: string; rosterSlots?: Record<string, number> }) => l._id === leagueId) ??
+          (data.leagues ?? []).find((l: { _id: string; rosterSlots?: Record<string, number>; teamCount?: number; budget?: number }) => l._id === leagueId) ??
           data.leagues?.[0];
         if (league?.scope === "AL" || league?.scope === "NL" || league?.scope === "MLB") {
           setLeagueScope(league.scope);
@@ -189,6 +193,12 @@ export default function PlayersPage() {
         }
         if (league?.rosterSlots && typeof league.rosterSlots === "object") {
           setLeagueRosterSlots(league.rosterSlots);
+        }
+        if (typeof league?.teamCount === "number" && league.teamCount > 0) {
+          setLeagueNumTeams(league.teamCount);
+        }
+        if (typeof league?.budget === "number" && league.budget > 0) {
+          setLeagueBudget(league.budget);
         }
       } catch (e) {
         console.error("Failed to load league scope:", e);

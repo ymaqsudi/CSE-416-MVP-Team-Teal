@@ -42,9 +42,32 @@ export function parseCategories(value: unknown): string[] | undefined {
   return parts.length > 0 ? parts : undefined;
 }
 
+/** Positive integer in [2, 30]. Anything outside that range gets dropped so we fall back to the default. */
+export function parseNumTeams(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 2 || n > 30) return undefined;
+  return Math.floor(n);
+}
+
+/** Positive integer per team. Used in tandem with numTeams for the auction pool size. */
+export function parseBudget(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  return Math.floor(n);
+}
+
 export async function leagueDraftFromQuery(
   sessionId: unknown,
-  opts: { requireSession: boolean; mlbLeague?: "AL" | "NL"; categories?: string[]; rosterSlotsPerTeam?: Record<string, number> }
+  opts: {
+    requireSession: boolean;
+    mlbLeague?: "AL" | "NL";
+    categories?: string[];
+    rosterSlotsPerTeam?: Record<string, number>;
+    numTeams?: number;
+    budget?: number;
+  }
 ): Promise<
   | { ok: true; league: LeagueConfig; draft: DraftStateInput }
   | { ok: false; status: number; message: string }
@@ -59,6 +82,8 @@ export async function leagueDraftFromQuery(
       ok: true,
       league: {
         ...DEFAULT_DISPLAY_LEAGUE,
+        ...(opts.numTeams !== undefined ? { numTeams: opts.numTeams } : {}),
+        ...(opts.budget !== undefined ? { budget: opts.budget } : {}),
         mlbLeague: opts.mlbLeague,
         categories: opts.categories,
         rosterSlotsPerTeam: opts.rosterSlotsPerTeam,
