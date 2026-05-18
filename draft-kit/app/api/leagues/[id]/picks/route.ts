@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League } from "@/lib/models/League";
 import { DraftPick } from "@/lib/models/DraftPick";
+import { Roster } from "@/lib/models/Roster";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 if (!JWT_SECRET) {
@@ -62,9 +63,37 @@ export async function GET(
       return NextResponse.json({ error: "League not found" }, { status: 404 });
     }
 
-    const picks = await DraftPick.find({ leagueId: id }).sort({
-      pickNumber: 1,
-    });
+    const [draftPicks, keepers] = await Promise.all([
+      DraftPick.find({ leagueId: id }).sort({ pickNumber: 1 }).lean(),
+      Roster.find({ leagueId: id }).lean(),
+    ]);
+
+    const teamIdByName = new Map(
+      (league.teams ?? []).map((t) => [t.name, t.id]),
+    );
+
+    const keeperPicks = keepers.map((r) => ({
+      _id: r._id,
+      leagueId: r.leagueId,
+      playerId: r.playerId,
+      playerName: r.playerName,
+      mlbTeam: r.mlbTeam,
+      positions: r.positions ?? [],
+      teamId: teamIdByName.get(r.teamName) ?? "",
+      teamName: r.teamName,
+      price: r.price,
+      pickNumber: 0,
+      isKeeper: true,
+      createdAt: r.assignedAt ?? (r as { createdAt?: Date }).createdAt,
+      updatedAt: (r as { updatedAt?: Date }).updatedAt,
+    }));
+
+    const annotatedDraftPicks = draftPicks.map((p) => ({
+      ...p,
+      isKeeper: false,
+    }));
+
+    const picks = [...keeperPicks, ...annotatedDraftPicks];
 
     return NextResponse.json({ picks }, { status: 200 });
   } catch (error) {
@@ -135,34 +164,45 @@ export async function POST(
       );
     }
 
-    // prevent duplicate: same player already drafted in this league
-    const existing = await DraftPick.findOne({ leagueId: id, playerId });
-    if (existing) {
+    // prevent duplicate: same player already drafted or kept in this league
+    const [existingPick, existingKeeper] = await Promise.all([
+      DraftPick.findOne({ leagueId: id, playerId }),
+      Roster.findOne({ leagueId: id, playerId }),
+    ]);
+    if (existingPick) {
       return NextResponse.json(
         { error: "Player has already been drafted in this league" },
+        { status: 409 },
+      );
+    }
+    if (existingKeeper) {
+      return NextResponse.json(
+        { error: "Player is already assigned as a keeper in this league" },
         { status: 409 },
       );
     }
 
     const mainRosterSlots = Number(league.mainRosterSlots) || 23;
 
-    const teamPicks = await DraftPick.find({
-      leagueId: id,
-      teamId,
-    }).select("price");
+    const [teamPicks, teamKeepers] = await Promise.all([
+      DraftPick.find({ leagueId: id, teamId }).select("price"),
+      Roster.find({ leagueId: id, teamName: team.name }).select("price"),
+    ]);
 
-    const teamPickCount = teamPicks.length;
+    const teamPickCount = teamPicks.length + teamKeepers.length;
 
     if (teamPickCount >= mainRosterSlots) {
       return NextResponse.json(
         {
-          error: `This team already has ${mainRosterSlots} main-roster picks and cannot draft another main-roster player.`,
+          error: `This team already has ${mainRosterSlots} main-roster players and cannot draft another main-roster player.`,
         },
         { status: 400 },
       );
     }
 
-    const teamSpent = teamPicks.reduce((sum, pick) => sum + Number(pick.price || 0), 0);
+    const teamSpent =
+      teamPicks.reduce((sum, pick) => sum + Number(pick.price || 0), 0) +
+      teamKeepers.reduce((sum, r) => sum + Number(r.price || 0), 0);
     const remainingSpots = Math.max(mainRosterSlots - teamPickCount, 1);
     const maxAllowedBid = Math.max(Number(league.budget) - teamSpent - (remainingSpots - 1), 0);
 

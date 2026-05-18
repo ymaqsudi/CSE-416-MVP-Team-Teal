@@ -240,12 +240,15 @@ export default function PlayerDetailPage({
       }
 
       // Success - close dialog and reset form
+      const assignedTeam = teamName.trim();
       setShowAssignDialog(false);
       setSelectedLeague("");
       setTeamName("");
       setPosition("");
       setPrice("");
-      alert("Player assigned successfully!");
+      alert(
+        `Player assigned to ${assignedTeam} as a keeper. They will be hidden from the live draft search and their salary counts against the team's budget.`,
+      );
     } catch (e) {
       setAssignError("Something went wrong. Please try again.");
       console.error(e);

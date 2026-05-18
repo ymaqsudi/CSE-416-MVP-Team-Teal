@@ -29,6 +29,7 @@ type RosterEntry = {
   positions: string[];
   position: string;
   price: number;
+  isKeeper?: boolean;
 };
 
 export default function RosterPage() {
@@ -320,6 +321,12 @@ export default function RosterPage() {
                       <span className="text-muted-foreground font-mono text-xs shrink-0">
                         {entry.mlbTeam}
                       </span>
+                      <Badge
+                        variant={entry.isKeeper ? "secondary" : "default"}
+                        className="text-[10px] shrink-0"
+                      >
+                        {entry.isKeeper ? "Keeper" : "Drafted"}
+                      </Badge>
                       <div className="flex gap-1 flex-wrap">
                         {entry.positions.map((pos) => (
                           <Badge
@@ -333,24 +340,30 @@ export default function RosterPage() {
                       </div>
                     </div>
 
-                    {/* Price + unassign */}
+                    {/* Price + unassign (keepers only — drafted picks must be undone from the draft page) */}
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="font-bold text-primary">
                         ${entry.price}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground hover:text-destructive h-7 px-2"
-                        disabled={unassigning === entry._id}
-                        onClick={() => handleUnassign(entry)}
-                      >
-                        {unassigning === entry._id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          "Remove"
-                        )}
-                      </Button>
+                      {entry.isKeeper ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive h-7 px-2"
+                          disabled={unassigning === entry._id}
+                          onClick={() => handleUnassign(entry)}
+                        >
+                          {unassigning === entry._id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            "Remove"
+                          )}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">
+                          undo on draft page
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}

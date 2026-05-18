@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { Roster } from "@/lib/models/Roster";
 import { League } from "@/lib/models/League";
+import { DraftPick } from "@/lib/models/DraftPick";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -78,11 +79,40 @@ export async function GET(
       );
     }
 
-    // Get all roster assignments for this league and team
-    const roster = await Roster.find({ leagueId: id, teamName }).sort({
-      position: 1,
-      assignedAt: 1,
-    });
+    // Get all roster assignments (keepers) and draft picks for this league/team
+    const [keepers, draftPicks] = await Promise.all([
+      Roster.find({ leagueId: id, teamName })
+        .sort({ position: 1, assignedAt: 1 })
+        .lean(),
+      DraftPick.find({ leagueId: id, teamName })
+        .sort({ pickNumber: 1 })
+        .lean(),
+    ]);
+
+    const draftedEntries = draftPicks.map((p) => ({
+      _id: p._id,
+      leagueId: p.leagueId,
+      teamName: p.teamName,
+      playerId: p.playerId,
+      playerName: p.playerName,
+      mlbTeam: p.mlbTeam,
+      positions: p.positions ?? [],
+      // Display-only slot: first position from the player's eligibilities,
+      // falling back to UTIL. Not persisted — the draft flow doesn't track
+      // slot assignment, this is just so the roster page can render the row.
+      position: (p.positions ?? [])[0] ?? "UTIL",
+      price: p.price,
+      assignedAt: (p as { createdAt?: Date }).createdAt,
+      pickNumber: p.pickNumber,
+      isKeeper: false,
+    }));
+
+    const keeperEntries = keepers.map((r) => ({
+      ...r,
+      isKeeper: true,
+    }));
+
+    const roster = [...keeperEntries, ...draftedEntries];
 
     return NextResponse.json({ roster }, { status: 200 });
   } catch (error) {
