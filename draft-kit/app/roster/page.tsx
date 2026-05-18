@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -21,6 +20,8 @@ type League = {
   leagueName: string;
   budget: number;
   teams?: Team[];
+  myTeamId?: string;
+  rosterSlots?: Record<string, number>;
 };
 
 type RosterEntry = {
@@ -33,6 +34,8 @@ type RosterEntry = {
   price: number;
   isKeeper?: boolean;
 };
+
+const SLOT_ORDER = ["C", "1B", "2B", "3B", "SS", "MI", "CI", "OF", "UTIL", "P"] as const;
 
 export default function RosterPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -49,37 +52,6 @@ export default function RosterPage() {
     const t = localStorage.getItem("draftkit_token");
     setToken(t);
   }, []);
-
-  useEffect(() => {
-    if (!token) {
-      setLeaguesLoading(false);
-      return;
-    }
-    async function fetchLeagues() {
-      try {
-        const res = await fetch("/api/leagues", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (res.ok) {
-          const fetchedLeagues: League[] = data.leagues ?? [];
-          if (fetchedLeagues.length > 0) {
-            const storedLeagueId = localStorage.getItem("draftkit_leagueId");
-            const active =
-              fetchedLeagues.find((l) => l._id === storedLeagueId) ??
-              fetchedLeagues[0];
-            setLeague(active);
-            localStorage.setItem("draftkit_leagueId", active._id);
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLeaguesLoading(false);
-      }
-    }
-    fetchLeagues();
-  }, [token]);
 
   const fetchRoster = useCallback(
     async (leagueId: string, team: string) => {
@@ -107,6 +79,47 @@ export default function RosterPage() {
     },
     [token],
   );
+
+  useEffect(() => {
+    if (!token) {
+      setLeaguesLoading(false);
+      return;
+    }
+    async function fetchLeagues() {
+      try {
+        const res = await fetch("/api/leagues", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (res.ok) {
+          const fetchedLeagues: League[] = data.leagues ?? [];
+          if (fetchedLeagues.length > 0) {
+            const storedLeagueId = localStorage.getItem("draftkit_leagueId");
+            const active =
+              fetchedLeagues.find((l) => l._id === storedLeagueId) ??
+              fetchedLeagues[0];
+            setLeague(active);
+            localStorage.setItem("draftkit_leagueId", active._id);
+
+            // Default to the user's own team if one is configured.
+            const myTeam = (active.teams ?? []).find(
+              (t) => t.id === active.myTeamId,
+            );
+            const defaultTeamName = myTeam?.name ?? active.teams?.[0]?.name ?? "";
+            if (defaultTeamName) {
+              setTeamName(defaultTeamName);
+              fetchRoster(active._id, defaultTeamName);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLeaguesLoading(false);
+      }
+    }
+    fetchLeagues();
+  }, [token, fetchRoster]);
 
   function handleTeamChange(name: string) {
     setTeamName(name);
@@ -143,8 +156,44 @@ export default function RosterPage() {
   const budget = league?.budget ?? 0;
   const spent = roster.reduce((sum, r) => sum + r.price, 0);
   const remaining = budget - spent;
-  const maxBid = remaining - 1;
+  const maxBid = Math.max(remaining - 1, 0);
   const teams = league?.teams ?? [];
+
+  // Build a slot-by-slot view of the team's roster so empty slots are visible.
+  type SlotRow =
+    | { kind: "filled"; slot: string; entry: RosterEntry }
+    | { kind: "empty"; slot: string };
+
+  const slotCounts = league?.rosterSlots ?? {};
+  const remainingByPos = new Map<string, RosterEntry[]>();
+  for (const entry of roster) {
+    const arr = remainingByPos.get(entry.position) ?? [];
+    arr.push(entry);
+    remainingByPos.set(entry.position, arr);
+  }
+
+  const slotRows: SlotRow[] = [];
+  const orderedSlots = [
+    ...SLOT_ORDER.filter((s) => (slotCounts[s] ?? 0) > 0),
+    ...Object.keys(slotCounts).filter(
+      (s) => !(SLOT_ORDER as readonly string[]).includes(s) && (slotCounts[s] ?? 0) > 0,
+    ),
+  ];
+  for (const slot of orderedSlots) {
+    const count = slotCounts[slot] ?? 0;
+    const pool = remainingByPos.get(slot) ?? [];
+    for (let i = 0; i < count; i++) {
+      const entry = pool.shift();
+      if (entry) slotRows.push({ kind: "filled", slot, entry });
+      else slotRows.push({ kind: "empty", slot });
+    }
+  }
+  // Any players whose slot doesn't match the league's roster config still get shown.
+  for (const [, pool] of remainingByPos) {
+    for (const entry of pool) {
+      slotRows.push({ kind: "filled", slot: entry.position, entry });
+    }
+  }
 
   if (!token && !leaguesLoading) {
     return (
@@ -158,24 +207,16 @@ export default function RosterPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-foreground">My Roster</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {teamName
-            ? `${roster.length} players assigned — ${teamName}`
-            : "Select a team to view its roster"}
-        </p>
       </div>
 
-      {/* Team selector (league is set in the navbar) */}
+      {/* Team selector + budget summary, all in one bar */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <label className="text-sm font-medium text-foreground mb-1 block">
-                Team
-              </label>
+        <CardContent className="py-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="md:w-64">
               {leaguesLoading ? (
                 <div className="flex items-center gap-2 text-muted-foreground text-sm">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -204,6 +245,23 @@ export default function RosterPage() {
                 </Select>
               )}
             </div>
+
+            {teamName && !loading ? (
+              <div className="flex flex-wrap gap-4 md:gap-6 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Remaining </span>
+                  <span className="font-bold text-primary">${remaining}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Spent </span>
+                  <span className="font-bold text-foreground">${spent}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Max Bid </span>
+                  <span className="font-bold text-primary">${maxBid}</span>
+                </div>
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -214,125 +272,92 @@ export default function RosterPage() {
         </div>
       )}
 
-      {/* Budget stats — only show once a roster is loaded */}
       {teamName && !loading && (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Remaining Budget</p>
-                <p className="text-3xl font-bold text-primary mt-1">
-                  ${remaining}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Spent</p>
-                <p className="text-3xl font-bold text-foreground mt-1">
-                  ${spent}
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="border-primary/30 bg-primary/5">
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Max Bid Right Now</p>
-                <p className="text-3xl font-bold text-primary mt-1">
-                  ${Math.max(maxBid, 0)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Remaining minus $1 reserve
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">{teamName}</h2>
 
-          <Separator />
-
-          {/* Roster table */}
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold">
-              Assigned Players
-            </h2>
-
-            {roster.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No players assigned to this team yet.
-              </p>
-            ) : (
-              <div className="rounded-md border border-border overflow-hidden">
-                {roster.map((entry, i) => (
-                  <div
-                    key={entry._id}
-                    className={`flex items-center gap-4 px-4 py-3 text-sm ${
-                      i % 2 === 0 ? "bg-background" : "bg-muted/30"
-                    }`}
-                  >
-                    {/* Slot */}
-                    <div className="w-14 shrink-0">
-                      <Badge variant="outline" className="font-mono text-xs">
-                        {entry.position}
-                      </Badge>
-                    </div>
-
-                    {/* Player info */}
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <span className="font-medium text-foreground truncate">
-                        {entry.playerName}
-                      </span>
-                      <span className="text-muted-foreground font-mono text-xs shrink-0">
-                        {entry.mlbTeam}
-                      </span>
-                      <Badge
-                        variant={entry.isKeeper ? "secondary" : "default"}
-                        className="text-[10px] shrink-0"
-                      >
-                        {entry.isKeeper ? "Keeper" : "Drafted"}
-                      </Badge>
-                      <div className="flex gap-1 flex-wrap">
-                        {entry.positions.map((pos) => (
-                          <Badge
-                            key={pos}
-                            variant="outline"
-                            className="text-xs"
-                          >
-                            {pos}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Price + unassign (keepers only — drafted picks must be undone from the draft page) */}
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="font-bold text-primary">
-                        ${entry.price}
-                      </span>
-                      {entry.isKeeper ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-muted-foreground hover:text-destructive h-7 px-2"
-                          disabled={unassigning === entry._id}
-                          onClick={() => handleUnassign(entry)}
-                        >
-                          {unassigning === entry._id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            "Remove"
-                          )}
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground italic">
-                          undo on draft page
-                        </span>
-                      )}
-                    </div>
+          {slotRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              This league has no roster slots configured.
+            </p>
+          ) : (
+            <div className="rounded-md border border-border overflow-hidden">
+              {slotRows.map((row, i) => (
+                <div
+                  key={row.kind === "filled" ? row.entry._id : `${row.slot}-${i}`}
+                  className={`flex items-center gap-4 px-4 py-3 text-sm ${
+                    i % 2 === 0 ? "bg-background" : "bg-muted/30"
+                  }`}
+                >
+                  <div className="w-14 shrink-0">
+                    <Badge variant="outline" className="font-mono text-xs">
+                      {row.slot}
+                    </Badge>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
+
+                  {row.kind === "filled" ? (
+                    <>
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className="font-medium text-foreground truncate">
+                          {row.entry.playerName}
+                        </span>
+                        <span className="text-muted-foreground font-mono text-xs shrink-0">
+                          {row.entry.mlbTeam}
+                        </span>
+                        <Badge
+                          variant={row.entry.isKeeper ? "secondary" : "default"}
+                          className="text-[10px] shrink-0"
+                        >
+                          {row.entry.isKeeper ? "Keeper" : "Drafted"}
+                        </Badge>
+                        <div className="flex gap-1 flex-wrap">
+                          {row.entry.positions.map((pos) => (
+                            <Badge
+                              key={pos}
+                              variant="outline"
+                              className="text-xs"
+                            >
+                              {pos}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="font-bold text-primary">
+                          ${row.entry.price}
+                        </span>
+                        {row.entry.isKeeper ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground hover:text-destructive h-7 px-2"
+                            disabled={unassigning === row.entry._id}
+                            onClick={() => handleUnassign(row.entry)}
+                          >
+                            {unassigning === row.entry._id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              "Remove"
+                            )}
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">
+                            undo on draft page
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 text-sm italic text-muted-foreground">
+                      Empty
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
