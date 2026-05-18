@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { Roster } from "@/lib/models/Roster";
 import { League } from "@/lib/models/League";
+import { DraftPick } from "@/lib/models/DraftPick";
 import { isEligibleForSlot } from "@/lib/shared/eligibility";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
@@ -110,6 +111,57 @@ export async function POST(
       return NextResponse.json(
         { error: "player is already assigned to this league" },
         { status: 409 },
+      );
+    }
+
+    // Check if player has already been drafted in this league
+    const draftedAlready = await DraftPick.findOne({
+      leagueId,
+      playerId: id,
+    });
+
+    if (draftedAlready) {
+      return NextResponse.json(
+        { error: "player has already been drafted in this league" },
+        { status: 409 },
+      );
+    }
+
+    // Roster-cap + budget check: sum keepers + drafted picks for the team.
+    const team = (league.teams ?? []).find((t) => t.name === teamName);
+    const mainRosterSlots = Number(league.mainRosterSlots) || 23;
+    const [teamKeepers, teamPicks] = await Promise.all([
+      Roster.find({ leagueId, teamName }).select("price"),
+      team
+        ? DraftPick.find({ leagueId, teamId: team.id }).select("price")
+        : Promise.resolve([] as { price?: number }[]),
+    ]);
+
+    const teamFilledCount = teamKeepers.length + teamPicks.length;
+    if (teamFilledCount >= mainRosterSlots) {
+      return NextResponse.json(
+        {
+          error: `This team already has ${mainRosterSlots} main-roster players and cannot add another.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const teamSpent =
+      teamKeepers.reduce((sum, r) => sum + Number(r.price || 0), 0) +
+      teamPicks.reduce((sum, p) => sum + Number(p.price || 0), 0);
+    const remainingSpots = Math.max(mainRosterSlots - teamFilledCount, 1);
+    const maxAllowedPrice = Math.max(
+      Number(league.budget) - teamSpent - (remainingSpots - 1),
+      0,
+    );
+
+    if (Number(price) > maxAllowedPrice) {
+      return NextResponse.json(
+        {
+          error: `Price exceeds this team's remaining budget. Max allowed is $${maxAllowedPrice}.`,
+        },
+        { status: 400 },
       );
     }
 
