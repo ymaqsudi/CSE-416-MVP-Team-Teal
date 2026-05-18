@@ -33,6 +33,7 @@ type DraftPick = {
   teamName: string;
   price: number;
   pickNumber: number;
+  isKeeper?: boolean;
 };
 
 type Team = { id: string; name: string };
@@ -278,6 +279,7 @@ export default function DraftPage() {
   }
 
   const recentPicks = [...picks]
+    .filter((p) => !p.isKeeper)
     .sort((a, b) => b.pickNumber - a.pickNumber)
     .slice(0, 5);
   const totalSpent = picks.reduce((sum, p) => sum + p.price, 0);
