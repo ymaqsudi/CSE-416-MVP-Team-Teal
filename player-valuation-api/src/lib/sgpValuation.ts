@@ -41,8 +41,12 @@ const BASE_DENOM_12T: Denominators = {
   W: 3,
   ERA: 0.15,
   WHIP: 0.025,
-  K: 22,
-  SV: 4,
+  // K and SV were nudged halfway toward the empirical adjacent-team spread surfaced by
+  // scripts/auditDenominators.ts (K ~41, SV ~9 across 200 random partitions). The full
+  // empirical values likely overshoot a real auction's spread; halving the move is a
+  // conservative correction to stop overvaluing strikeout pitchers and closers.
+  K: 30,
+  SV: 6,
 };
 
 function getDenominators(numTeams: number): Denominators {
@@ -67,7 +71,7 @@ function getDenominators(numTeams: number): Denominators {
  * playing-time-weighted means computed from the actual draftable pool, which
  * makes the math scope-aware for AL/NL-only leagues.
  */
-const LEAGUE_AVG_BA = 0.275;
+const LEAGUE_AVG_BA = 0.250;
 const LEAGUE_AVG_ERA = 4.2;
 const LEAGUE_AVG_WHIP = 1.28;
 

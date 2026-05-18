@@ -596,7 +596,7 @@ test("computeLeagueBaselines: ERA/WHIP are IP-weighted", () => {
 
 test("computeLeagueBaselines: empty pool falls back to module constants", () => {
   const { ba, era, whip } = computeLeagueBaselines([]);
-  assert.equal(ba, 0.275);
+  assert.equal(ba, 0.250);
   assert.equal(era, 4.2);
   assert.equal(whip, 1.28);
 });
