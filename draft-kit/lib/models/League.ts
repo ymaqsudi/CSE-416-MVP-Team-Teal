@@ -19,6 +19,7 @@ export interface ILeague extends Document {
   rosterSlots: Record<string, number>;
   taxiSlots: number;
   taxiDraftOrder: string[];
+  valuationSessionId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -107,6 +108,10 @@ const LeagueSchema = new Schema<ILeague>(
     taxiDraftOrder: {
       type: [String],
       default: [],
+    },
+    valuationSessionId: {
+      type: String,
+      default: undefined,
     },
   },
   {

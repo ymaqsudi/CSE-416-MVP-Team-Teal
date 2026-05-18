@@ -5,6 +5,7 @@ import { Roster } from "@/lib/models/Roster";
 import { League } from "@/lib/models/League";
 import { DraftPick } from "@/lib/models/DraftPick";
 import { isEligibleForSlot } from "@/lib/shared/eligibility";
+import { syncValuationSession } from "@/lib/valuation/syncSession";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -178,6 +179,8 @@ export async function POST(
       assignedBy: decoded.userId,
     });
 
+    await syncValuationSession(league);
+
     return NextResponse.json(
       {
         message: "player assigned to roster successfully",
@@ -256,6 +259,8 @@ export async function DELETE(
         { status: 404 },
       );
     }
+
+    await syncValuationSession(league);
 
     return NextResponse.json(
       {

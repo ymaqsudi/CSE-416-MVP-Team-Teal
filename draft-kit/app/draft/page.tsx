@@ -58,6 +58,7 @@ export default function DraftPage() {
   const [leagueRosterSlots, setLeagueRosterSlots] = useState<Record<string, number> | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [myTeamId, setMyTeamId] = useState<string>("");
+  const [valuationSessionId, setValuationSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,48 +101,51 @@ export default function DraftPage() {
     fetchPicks();
   }, [fetchPicks]);
 
-  useEffect(() => {
+  const fetchLeague = useCallback(async () => {
     if (!leagueId || !token) return;
-    async function fetchLeague() {
-      try {
-        const res = await fetch("/api/leagues", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const league = (data.leagues ?? []).find(
-          (l: {
-            _id: string;
-            budget: number;
-            mainRosterSlots?: number;
-            teams?: Team[];
-            myTeamId?: string;
-            scope?: "MLB" | "AL" | "NL";
-            categories?: string[];
-            rosterSlots?: Record<string, number>;
-          }) => l._id === leagueId,
-        );
-        if (league) {
-          setBudget(league.budget);
-          setMainRosterSlots(Number(league.mainRosterSlots) || 23);
-          setTeams(league.teams ?? []);
-          if (league.scope === "AL" || league.scope === "NL" || league.scope === "MLB") {
-            setLeagueScope(league.scope);
-          }
-          if (Array.isArray(league.categories)) {
-            setLeagueCategories(league.categories);
-          }
-          if (league.rosterSlots && typeof league.rosterSlots === "object") {
-            setLeagueRosterSlots(league.rosterSlots);
-          }
-          setMyTeamId(league.myTeamId ?? "");
+    try {
+      const res = await fetch("/api/leagues", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const league = (data.leagues ?? []).find(
+        (l: {
+          _id: string;
+          budget: number;
+          mainRosterSlots?: number;
+          teams?: Team[];
+          myTeamId?: string;
+          scope?: "MLB" | "AL" | "NL";
+          categories?: string[];
+          rosterSlots?: Record<string, number>;
+          valuationSessionId?: string;
+        }) => l._id === leagueId,
+      );
+      if (league) {
+        setBudget(league.budget);
+        setMainRosterSlots(Number(league.mainRosterSlots) || 23);
+        setTeams(league.teams ?? []);
+        if (league.scope === "AL" || league.scope === "NL" || league.scope === "MLB") {
+          setLeagueScope(league.scope);
         }
-      } catch {
-        // ignore — max bid will fall back to null
+        if (Array.isArray(league.categories)) {
+          setLeagueCategories(league.categories);
+        }
+        if (league.rosterSlots && typeof league.rosterSlots === "object") {
+          setLeagueRosterSlots(league.rosterSlots);
+        }
+        setMyTeamId(league.myTeamId ?? "");
+        setValuationSessionId(league.valuationSessionId ?? null);
       }
+    } catch {
+      // ignore — max bid will fall back to null
     }
-    fetchLeague();
   }, [leagueId, token]);
+
+  useEffect(() => {
+    fetchLeague();
+  }, [fetchLeague]);
 
   // live player search
   useEffect(() => {
@@ -250,6 +254,8 @@ export default function DraftPage() {
       setTeamId("");
       setPrice("");
       await fetchPicks();
+      // pick up valuationSessionId if it was just provisioned server-side
+      await fetchLeague();
     } catch (err) {
       setSubmitError(
         err instanceof Error ? err.message : "Something went wrong",
@@ -271,6 +277,7 @@ export default function DraftPage() {
         throw new Error(data.error ?? "Failed to undo pick");
       }
       await fetchPicks();
+      await fetchLeague();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to undo pick");
     } finally {
@@ -372,6 +379,7 @@ export default function DraftPage() {
                               if (leagueCategories.length > 0) params.set("categories", leagueCategories.join(","));
                               const encoded = encodeRosterSlots(leagueRosterSlots);
                               if (encoded) params.set("rosterSlots", encoded);
+                              if (valuationSessionId) params.set("sessionId", valuationSessionId);
                               const qs = params.toString() ? `?${params.toString()}` : "";
                               return `/api/valuation/players/${p.mlbPlayerId ?? p.id}/valuation${qs}`;
                             })())

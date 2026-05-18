@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League, SUPPORTED_ROSTER_SLOTS } from "@/lib/models/League";
+import { syncValuationSession } from "@/lib/valuation/syncSession";
 
 function normalizeRosterSlots(raw: unknown): Record<string, number> | null {
   if (!raw || typeof raw !== "object") return null;
@@ -190,8 +191,17 @@ export async function PATCH(
       league.myTeamId = merged[0]?.id ?? "";
     }
 
+    // The valuation API has no endpoint to update an existing session's
+    // league config (numTeams, budget, rosterSlots, etc.) — only picks. So
+    // when league settings change, drop the saved sessionId and let the
+    // next sync provision a fresh session with current config. The old
+    // session is orphaned on the valuation side (small, harmless).
+    league.valuationSessionId = undefined;
+
     const updatedLeague = await league.save();
     console.log("After save mainRosterSlots:", updatedLeague.mainRosterSlots);
+
+    await syncValuationSession(updatedLeague);
 
     return NextResponse.json(
       {
