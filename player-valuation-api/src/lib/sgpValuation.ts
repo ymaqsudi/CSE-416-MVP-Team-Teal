@@ -298,11 +298,15 @@ function isPitcher(p: PlayerLean): boolean {
 
 /**
  * "Full season" innings baselines used to scale pitcher counting stats.
- * A 200-IP starter and a 65-IP closer are both "full" workloads in their roles —
+ * A 180-IP starter and a 65-IP closer are both "full" workloads in their roles —
  * scaling them against 162 games (the hitter baseline) was nonsensical and turned
  * a 32-start ace's 15 wins into 3 effective wins.
+ *
+ * The SP baseline tracks modern usage: 200 IP was the classic "full season" but is
+ * now reached by only a handful of starters per year, so projections rarely hit it.
+ * Anchoring to 180 keeps the typical ace at availability ~= 1.0 instead of haircut.
  */
-const SP_BASELINE_IP = 200;
+const SP_BASELINE_IP = 180;
 const RP_BASELINE_IP = 65;
 
 function isReliever(p: PlayerLean): boolean {
