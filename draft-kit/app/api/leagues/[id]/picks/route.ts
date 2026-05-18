@@ -5,6 +5,7 @@ import { League } from "@/lib/models/League";
 import { DraftPick } from "@/lib/models/DraftPick";
 import { Roster } from "@/lib/models/Roster";
 import { getUnifiedLeaguePicks, syncValuationSession } from "@/lib/valuation/syncSession";
+import { getEligibleSlots } from "@/lib/shared/eligibility";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 if (!JWT_SECRET) {
@@ -189,12 +190,43 @@ export async function POST(
     // pick number = how many picks have been made so far + 1
     const pickCount = await DraftPick.countDocuments({ leagueId: id });
 
+    // Auto-assign the player to the first eligible slot on this team that's
+    // not already taken by another keeper or pick. The user can re-slot later
+    // from the roster page.
+    const slotCounts = (league.rosterSlots ?? {}) as Record<string, number>;
+    const eligible = getEligibleSlots(Array.isArray(positions) ? positions : []);
+    const [teamPicksWithSlot, teamKeepersWithSlot] = await Promise.all([
+      DraftPick.find({ leagueId: id, teamId }).select("position positions"),
+      Roster.find({ leagueId: id, teamName: team.name }).select("position"),
+    ]);
+    const usedBySlot = new Map<string, number>();
+    for (const p of teamPicksWithSlot) {
+      const slot = p.position || p.positions?.[0] || "";
+      if (!slot) continue;
+      usedBySlot.set(slot, (usedBySlot.get(slot) ?? 0) + 1);
+    }
+    for (const r of teamKeepersWithSlot) {
+      const slot = r.position;
+      if (!slot) continue;
+      usedBySlot.set(slot, (usedBySlot.get(slot) ?? 0) + 1);
+    }
+    let chosenSlot = "";
+    for (const slot of eligible) {
+      const cap = slotCounts[slot] ?? 0;
+      if (cap > 0 && (usedBySlot.get(slot) ?? 0) < cap) {
+        chosenSlot = slot;
+        break;
+      }
+    }
+    if (!chosenSlot) chosenSlot = eligible[0] ?? (Array.isArray(positions) ? positions[0] : "") ?? "UTIL";
+
     const pick = await DraftPick.create({
       leagueId: id,
       playerId,
       playerName,
       mlbTeam,
       positions: Array.isArray(positions) ? positions : [],
+      position: chosenSlot,
       teamId,
       teamName: team.name,
       price: Number(price),

@@ -11,6 +11,15 @@ export type InjuryStatus =
   | "10-Day IL" | "15-Day IL" | "60-Day IL"
   | "Out for Season" | "Suspended";
 
+export type RosterStatus =
+  | "ActiveRoster"
+  | "InjuredList"
+  | "InjuredList60"
+  | "Bereavement"
+  | "MinorLeague"
+  | "NotOnRoster"
+  | "Unknown";
+
 export interface HitterStats {
   games?: number;
   hr?: number;
@@ -59,6 +68,7 @@ export interface Player {
   bats?: "R" | "L" | "S";
   throws?: "R" | "L";
   depthRole?: DepthRole;   // MVP: can be "Unknown"
+  rosterStatus?: RosterStatus;
   risk?: "Low" | "Med" | "High";
   age?: number;
   injuryStatus?: InjuryStatus | null;

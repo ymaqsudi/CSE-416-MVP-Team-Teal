@@ -4,7 +4,9 @@ import mongoose from "mongoose";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League } from "@/lib/models/League";
 import { DraftPick } from "@/lib/models/DraftPick";
+import { Roster } from "@/lib/models/Roster";
 import { syncValuationSession } from "@/lib/valuation/syncSession";
+import { isEligibleForSlot } from "@/lib/shared/eligibility";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 if (!JWT_SECRET) {
@@ -60,11 +62,15 @@ export async function PATCH(
     }
 
     const body = await request.json().catch(() => ({}));
-    const { teamId, price } = body as { teamId?: string; price?: number };
+    const { teamId, price, position } = body as {
+      teamId?: string;
+      price?: number;
+      position?: string;
+    };
 
-    if (teamId === undefined && price === undefined) {
+    if (teamId === undefined && price === undefined && position === undefined) {
       return NextResponse.json(
-        { error: "At least one of teamId or price is required" },
+        { error: "At least one of teamId, price, or position is required" },
         { status: 400 },
       );
     }
@@ -139,6 +145,50 @@ export async function PATCH(
         },
         { status: 400 },
       );
+    }
+
+    if (position !== undefined) {
+      const nextSlot = String(position).trim();
+      if (!nextSlot) {
+        return NextResponse.json(
+          { error: "position must be a non-empty string" },
+          { status: 400 },
+        );
+      }
+      const slotCounts = (league.rosterSlots ?? {}) as Record<string, number>;
+      const cap = slotCounts[nextSlot] ?? 0;
+      if (cap === 0) {
+        return NextResponse.json(
+          { error: `League has no ${nextSlot} slots configured.` },
+          { status: 400 },
+        );
+      }
+      if (!isEligibleForSlot(pick.positions ?? [], nextSlot)) {
+        return NextResponse.json(
+          { error: `Player is not eligible for the ${nextSlot} slot.` },
+          { status: 400 },
+        );
+      }
+      const [picksInSlot, keepersInSlot] = await Promise.all([
+        DraftPick.countDocuments({
+          leagueId: id,
+          teamId: nextTeamId,
+          position: nextSlot,
+          _id: { $ne: pick._id },
+        }),
+        Roster.countDocuments({
+          leagueId: id,
+          teamName: nextTeamName,
+          position: nextSlot,
+        }),
+      ]);
+      if (picksInSlot + keepersInSlot >= cap) {
+        return NextResponse.json(
+          { error: `All ${nextSlot} slots on this team are already filled.` },
+          { status: 409 },
+        );
+      }
+      pick.position = nextSlot;
     }
 
     pick.teamId = nextTeamId;

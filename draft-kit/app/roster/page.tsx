@@ -11,7 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Loader2 } from "lucide-react";
+import { isEligibleForSlot } from "@/lib/shared/eligibility";
 
 type Team = { id: string; name: string };
 
@@ -47,6 +54,7 @@ export default function RosterPage() {
   const [leaguesLoading, setLeaguesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [unassigning, setUnassigning] = useState<string | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
 
   useEffect(() => {
     const t = localStorage.getItem("draftkit_token");
@@ -128,6 +136,43 @@ export default function RosterPage() {
     if (league) fetchRoster(league._id, name);
   }
 
+  async function handleMove(entry: RosterEntry, target: string) {
+    if (!token || !league || target === entry.position) return;
+    setMoving(entry._id);
+    try {
+      const url = entry.isKeeper
+        ? `/api/players/${entry.playerId}/assignment`
+        : `/api/leagues/${league._id}/picks/${entry._id}`;
+      const body = entry.isKeeper
+        ? {
+            leagueId: league._id,
+            teamName,
+            fromPosition: entry.position,
+            toPosition: target,
+          }
+        : { position: target };
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        await fetchRoster(league._id, teamName);
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to move player.");
+      }
+    } catch (e) {
+      console.error(e);
+      setError("Something went wrong.");
+    } finally {
+      setMoving(null);
+    }
+  }
+
   async function handleUnassign(entry: RosterEntry) {
     if (!token || !league) return;
     setUnassigning(entry._id);
@@ -164,7 +209,29 @@ export default function RosterPage() {
     | { kind: "filled"; slot: string; entry: RosterEntry }
     | { kind: "empty"; slot: string };
 
-  const slotCounts = league?.rosterSlots ?? {};
+  const slotCounts: Record<string, number> = league?.rosterSlots ?? {};
+  const occupancyBySlot = new Map<string, number>();
+  for (const entry of roster) {
+    occupancyBySlot.set(
+      entry.position,
+      (occupancyBySlot.get(entry.position) ?? 0) + 1,
+    );
+  }
+
+  function eligibleTargetSlots(entry: RosterEntry): string[] {
+    const targets: string[] = [];
+    for (const slot of Object.keys(slotCounts)) {
+      const cap = slotCounts[slot] ?? 0;
+      if (cap === 0 || slot === entry.position) continue;
+      if (!isEligibleForSlot(entry.positions ?? [], slot)) continue;
+      const occ = occupancyBySlot.get(slot) ?? 0;
+      if (occ < cap) targets.push(slot);
+    }
+    const ordered = SLOT_ORDER.filter((s) => targets.includes(s));
+    const extras = targets.filter((s) => !(SLOT_ORDER as readonly string[]).includes(s));
+    return [...ordered, ...extras];
+  }
+
   const remainingByPos = new Map<string, RosterEntry[]>();
   for (const entry of roster) {
     const arr = remainingByPos.get(entry.position) ?? [];
@@ -195,23 +262,20 @@ export default function RosterPage() {
     }
   }
 
+  const myTeamId = league?.myTeamId;
+  const myTeamName = teams.find((t) => t.id === myTeamId)?.name ?? "";
+  const viewingMyTeam = !!myTeamName && teamName === myTeamName;
+
   if (!token && !leaguesLoading) {
     return (
-      <div className="space-y-2">
-        <h1 className="text-2xl font-bold">My Roster</h1>
-        <p className="text-sm text-muted-foreground">
-          Log in to view your roster.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Log in to view your roster.
+      </p>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">My Roster</h1>
-      </div>
-
       {/* Team selector + budget summary, all in one bar */}
       <Card>
         <CardContent className="py-4">
@@ -239,6 +303,7 @@ export default function RosterPage() {
                     {teams.map((t) => (
                       <SelectItem key={t.id} value={t.name}>
                         {t.name}
+                        {t.id === myTeamId ? " (My Roster)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -274,7 +339,14 @@ export default function RosterPage() {
 
       {teamName && !loading && (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">{teamName}</h2>
+          <h2 className="text-lg font-semibold">
+            {teamName}
+            {viewingMyTeam ? (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                (My Roster)
+              </span>
+            ) : null}
+          </h2>
 
           {slotRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -323,10 +395,42 @@ export default function RosterPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span className="font-bold text-primary">
                           ${row.entry.price}
                         </span>
+                        {(() => {
+                          const targets = eligibleTargetSlots(row.entry);
+                          if (targets.length === 0) return null;
+                          return (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={moving === row.entry._id}
+                                >
+                                  {moving === row.entry._id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    "Move"
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {targets.map((slot) => (
+                                  <DropdownMenuItem
+                                    key={slot}
+                                    onClick={() => handleMove(row.entry, slot)}
+                                  >
+                                    → {slot}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          );
+                        })()}
                         {row.entry.isKeeper ? (
                           <Button
                             variant="ghost"

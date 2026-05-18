@@ -82,7 +82,7 @@ const riskColors: Record<string, string> = {
   High: "bg-red-100 text-red-800 border-red-200",
 };
 
-const injuryColors: Record<string, string> = {
+const statusColors: Record<string, string> = {
   "Active": "bg-green-100 text-green-800 border-green-200",
   "Day-to-Day": "bg-yellow-100 text-yellow-800 border-yellow-200",
   "10-Day IL": "bg-orange-100 text-orange-800 border-orange-200",
@@ -90,7 +90,35 @@ const injuryColors: Record<string, string> = {
   "60-Day IL": "bg-red-100 text-red-800 border-red-200",
   "Out for Season": "bg-red-100 text-red-800 border-red-200",
   "Suspended": "bg-gray-100 text-gray-800 border-gray-200",
+  "Bereavement": "bg-gray-100 text-gray-800 border-gray-200",
+  "Minors": "bg-blue-100 text-blue-800 border-blue-200",
+  "Not on Roster": "bg-gray-100 text-gray-800 border-gray-200",
 };
+
+// Combine the player's specific injuryStatus (e.g. "60-Day IL") with the
+// broader rosterStatus (ActiveRoster / MinorLeague / etc.) so the column
+// surfaces the most informative label available.
+function displayStatus(player: Player): string | null {
+  if (player.injuryStatus && player.injuryStatus !== "Active") {
+    return player.injuryStatus;
+  }
+  switch (player.rosterStatus) {
+    case "InjuredList60":
+      return "60-Day IL";
+    case "InjuredList":
+      return "Injured List";
+    case "MinorLeague":
+      return "Minors";
+    case "NotOnRoster":
+      return "Not on Roster";
+    case "Bereavement":
+      return "Bereavement";
+    case "ActiveRoster":
+      return "Active";
+    default:
+      return player.injuryStatus ?? null;
+  }
+}
 
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -734,15 +762,19 @@ export default function PlayersPage() {
                     </TableCell>
                   )}
                   <TableCell>
-                    {player.injuryStatus ? (
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full border ${injuryColors[player.injuryStatus] ?? ""}`}
-                      >
-                        {player.injuryStatus}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">—</span>
-                    )}
+                    {(() => {
+                      const label = displayStatus(player);
+                      if (!label) {
+                        return <span className="text-muted-foreground text-xs">—</span>;
+                      }
+                      return (
+                        <span
+                          className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusColors[label] ?? ""}`}
+                        >
+                          {label}
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     {player.risk ? (

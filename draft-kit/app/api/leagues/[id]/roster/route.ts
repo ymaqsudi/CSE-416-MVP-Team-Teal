@@ -97,10 +97,10 @@ export async function GET(
       playerName: p.playerName,
       mlbTeam: p.mlbTeam,
       positions: p.positions ?? [],
-      // Display-only slot: first position from the player's eligibilities,
-      // falling back to UTIL. Not persisted — the draft flow doesn't track
-      // slot assignment, this is just so the roster page can render the row.
-      position: (p.positions ?? [])[0] ?? "UTIL",
+      // Stored slot from the draft (auto-assigned when the pick was recorded
+      // and editable from the roster page). Legacy picks without a stored
+      // slot fall back to the player's first eligible position.
+      position: p.position || (p.positions ?? [])[0] || "UTIL",
       price: p.price,
       assignedAt: (p as { createdAt?: Date }).createdAt,
       pickNumber: p.pickNumber,

@@ -198,6 +198,127 @@ export async function POST(
   }
 }
 
+// PATCH /api/players/[id]/assignment — move a keeper to a new slot
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const token = getTokenFromRequest(request);
+    if (!token) {
+      return NextResponse.json(
+        { error: "missing authorization token" },
+        { status: 401 },
+      );
+    }
+
+    const decoded = verifyToken(token);
+    if (!decoded) {
+      return NextResponse.json(
+        { error: "invalid or expired token" },
+        { status: 401 },
+      );
+    }
+
+    const { id } = await context.params;
+    const body = await request.json().catch(() => ({}));
+    const { leagueId, teamName, fromPosition, toPosition } = body as {
+      leagueId?: string;
+      teamName?: string;
+      fromPosition?: string;
+      toPosition?: string;
+    };
+
+    if (!leagueId || !teamName || !fromPosition || !toPosition) {
+      return NextResponse.json(
+        {
+          error:
+            "leagueId, teamName, fromPosition, and toPosition are required",
+        },
+        { status: 400 },
+      );
+    }
+
+    await connectToDatabase();
+
+    const league = await League.findOne({ _id: leagueId, userId: decoded.userId });
+    if (!league) {
+      return NextResponse.json(
+        { error: "league not found or access denied" },
+        { status: 404 },
+      );
+    }
+
+    const assignment = await Roster.findOne({
+      leagueId,
+      teamName,
+      playerId: id,
+      position: fromPosition,
+    });
+
+    if (!assignment) {
+      return NextResponse.json(
+        { error: "assignment not found" },
+        { status: 404 },
+      );
+    }
+
+    if (!isEligibleForSlot(assignment.positions ?? [], toPosition)) {
+      return NextResponse.json(
+        { error: `Player is not eligible for the ${toPosition} slot.` },
+        { status: 400 },
+      );
+    }
+
+    const slotCounts = (league.rosterSlots ?? {}) as Record<string, number>;
+    const cap = slotCounts[toPosition] ?? 0;
+    if (cap === 0) {
+      return NextResponse.json(
+        { error: `League has no ${toPosition} slots configured.` },
+        { status: 400 },
+      );
+    }
+
+    const team = (league.teams ?? []).find((t) => t.name === teamName);
+    const [picksInSlot, keepersInSlot] = await Promise.all([
+      team
+        ? DraftPick.countDocuments({
+            leagueId,
+            teamId: team.id,
+            position: toPosition,
+          })
+        : Promise.resolve(0),
+      Roster.countDocuments({
+        leagueId,
+        teamName,
+        position: toPosition,
+        _id: { $ne: assignment._id },
+      }),
+    ]);
+
+    if (picksInSlot + keepersInSlot >= cap) {
+      return NextResponse.json(
+        { error: `All ${toPosition} slots on this team are already filled.` },
+        { status: 409 },
+      );
+    }
+
+    assignment.position = toPosition;
+    await assignment.save();
+
+    return NextResponse.json(
+      { message: "assignment moved", assignment },
+      { status: 200 },
+    );
+  } catch (error) {
+    console.error("Move assignment route error:", error);
+    return NextResponse.json(
+      { error: "internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },

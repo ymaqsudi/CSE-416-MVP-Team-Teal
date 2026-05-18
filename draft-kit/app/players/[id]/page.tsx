@@ -34,7 +34,7 @@ const riskColors: Record<string, string> = {
   High: "bg-red-100 text-red-800 border-red-200",
 };
 
-const injuryColors: Record<string, string> = {
+const statusColors: Record<string, string> = {
   "Active": "bg-green-100 text-green-800 border-green-200",
   "Day-to-Day": "bg-yellow-100 text-yellow-800 border-yellow-200",
   "10-Day IL": "bg-orange-100 text-orange-800 border-orange-200",
@@ -42,7 +42,32 @@ const injuryColors: Record<string, string> = {
   "60-Day IL": "bg-red-100 text-red-800 border-red-200",
   "Out for Season": "bg-red-100 text-red-800 border-red-200",
   "Suspended": "bg-gray-100 text-gray-800 border-gray-200",
+  "Bereavement": "bg-gray-100 text-gray-800 border-gray-200",
+  "Minors": "bg-blue-100 text-blue-800 border-blue-200",
+  "Not on Roster": "bg-gray-100 text-gray-800 border-gray-200",
 };
+
+function displayStatus(player: Player): string | null {
+  if (player.injuryStatus && player.injuryStatus !== "Active") {
+    return player.injuryStatus;
+  }
+  switch (player.rosterStatus) {
+    case "InjuredList60":
+      return "60-Day IL";
+    case "InjuredList":
+      return "Injured List";
+    case "MinorLeague":
+      return "Minors";
+    case "NotOnRoster":
+      return "Not on Roster";
+    case "Bereavement":
+      return "Bereavement";
+    case "ActiveRoster":
+      return "Active";
+    default:
+      return player.injuryStatus ?? null;
+  }
+}
 
 export default function PlayerDetailPage({
   params,
@@ -69,7 +94,6 @@ export default function PlayerDetailPage({
     teams?: { id: string; name: string }[];
   } | null>(null);
   const [teamName, setTeamName] = useState<string>("");
-  const [position, setPosition] = useState<string>("");
   const [price, setPrice] = useState<string>("");
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
@@ -242,8 +266,14 @@ export default function PlayerDetailPage({
   }, [activeLeagueId, id]);
 
   async function handleAssignPlayer() {
-    if (!player || !activeLeague || !teamName.trim() || !position || !price) {
+    if (!player || !activeLeague || !teamName.trim() || !price) {
       setAssignError("All fields are required");
+      return;
+    }
+    const eligibleSlots = getEligibleSlots(player.positions);
+    const defaultSlot = eligibleSlots[0];
+    if (!defaultSlot) {
+      setAssignError("Player has no eligible slot in this league.");
       return;
     }
 
@@ -266,7 +296,7 @@ export default function PlayerDetailPage({
         body: JSON.stringify({
           leagueId: activeLeague._id,
           teamName: teamName.trim(),
-          position,
+          position: defaultSlot,
           price: Number(price),
           playerName: player.name,
           mlbTeam: player.mlbTeam,
@@ -285,7 +315,6 @@ export default function PlayerDetailPage({
       const assignedTeam = teamName.trim();
       setShowAssignDialog(false);
       setTeamName("");
-      setPosition("");
       setPrice("");
       alert(
         `Player assigned to ${assignedTeam} as a keeper. They will be hidden from the live draft search and their salary counts against the team's budget.`,
@@ -460,16 +489,20 @@ export default function PlayerDetailPage({
               </span>
             </>
           )}
-          {player.injuryStatus && player.injuryStatus !== "Active" && (
-            <>
-              <Separator orientation="vertical" className="h-4" />
-              <span
-                className={`text-xs font-medium px-2 py-0.5 rounded-full border ${injuryColors[player.injuryStatus] ?? ""}`}
-              >
-                {player.injuryStatus}
-              </span>
-            </>
-          )}
+          {(() => {
+            const label = displayStatus(player);
+            if (!label || label === "Active") return null;
+            return (
+              <>
+                <Separator orientation="vertical" className="h-4" />
+                <span
+                  className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusColors[label] ?? ""}`}
+                >
+                  {label}
+                </span>
+              </>
+            );
+          })()}
         </div>
         {player.injuryStatus && player.injuryStatus !== "Active" && (player.injuryNote || player.injuryReturn) && (
           <div className="mt-2 text-sm text-muted-foreground">
@@ -873,20 +906,6 @@ export default function PlayerDetailPage({
                     <SelectItem key={t.id} value={t.name}>
                       {t.name}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="position">Position</Label>
-              <Select value={position} onValueChange={setPosition}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select position" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(player ? getEligibleSlots(player.positions) : ["C","1B","2B","3B","SS","OF","MI","CI","U","P","SP","RP","BN"]).map((slot) => (
-                    <SelectItem key={slot} value={slot}>{slot}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

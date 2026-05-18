@@ -6,6 +6,7 @@ export interface IDraftPick extends Document {
   playerName: string;
   mlbTeam: string;
   positions: string[];
+  position?: string;
   teamId: string;
   teamName: string;
   price: number;
@@ -37,6 +38,11 @@ const DraftPickSchema = new Schema<IDraftPick>(
     positions: {
       type: [String],
       default: [],
+    },
+    position: {
+      type: String,
+      default: "",
+      trim: true,
     },
     teamId: {
       type: String,
