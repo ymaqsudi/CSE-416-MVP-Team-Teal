@@ -39,6 +39,75 @@ export async function createSession(req: Request, res: Response): Promise<void> 
   }
 }
 
+export async function putDraftState(req: Request, res: Response): Promise<void> {
+  try {
+    const { sessionId } = req.params;
+    const { picks, budgetsRemaining } = req.body ?? {};
+
+    if (!Array.isArray(picks)) {
+      res.status(400).json({ message: "Body must include picks (array)" });
+      return;
+    }
+
+    const cleanedPicks: Array<{
+      mlbPlayerId?: number;
+      playerId?: string;
+      teamInLeagueId: string;
+      price: number;
+    }> = [];
+
+    for (let i = 0; i < picks.length; i++) {
+      const p = picks[i];
+      const priceNum = typeof p?.price === "number" ? p.price : Number(p?.price);
+      if (
+        !p ||
+        typeof p.teamInLeagueId !== "string" ||
+        !Number.isFinite(priceNum)
+      ) {
+        res.status(400).json({
+          message: `picks[${i}] must include teamInLeagueId (string) and price (number)`,
+        });
+        return;
+      }
+      if (p.mlbPlayerId === undefined && p.playerId === undefined) {
+        res.status(400).json({
+          message: `picks[${i}] must include mlbPlayerId and/or playerId`,
+        });
+        return;
+      }
+      cleanedPicks.push({
+        mlbPlayerId: p.mlbPlayerId !== undefined ? Number(p.mlbPlayerId) : undefined,
+        playerId: typeof p.playerId === "string" ? p.playerId : undefined,
+        teamInLeagueId: p.teamInLeagueId,
+        price: priceNum,
+      });
+    }
+
+    const exists = await SessionModel.findOne({ sessionId }).lean().exec();
+    if (!exists) {
+      res.status(404).json({ message: "Session not found" });
+      return;
+    }
+
+    const setOps: Record<string, unknown> = {
+      "draftState.picks": cleanedPicks,
+    };
+    if (Array.isArray(budgetsRemaining)) {
+      setOps["draftState.budgetsRemaining"] = budgetsRemaining.map((x: unknown) => Number(x));
+    }
+
+    await SessionModel.updateOne({ sessionId }, { $set: setOps }).exec();
+
+    res.json({
+      sessionId,
+      picksRecorded: cleanedPicks.length,
+    });
+  } catch (e) {
+    console.error("putDraftState", e);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 export async function patchSession(req: Request, res: Response): Promise<void> {
   try {
     const { sessionId } = req.params;
