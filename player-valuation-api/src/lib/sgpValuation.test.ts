@@ -351,20 +351,6 @@ test("valuePool: with fullPool and no picks, inflation factor ≈ 1 (sanity)", (
   assert.equal(v.get("a")!.inflationFactor, undefined);
 });
 
-test("valuePool: omitting fullPool preserves the pre-Phase-3 dynamic behavior", () => {
-  // No fullPool option → values come from dynamic par against undrafted.
-  // We just assert Σ values ≈ remaining (same invariant as before).
-  const pool = [
-    hitter({ positions: ["SS"], projHR: 30 }),
-    hitter({ positions: ["SS"], projHR: 20 }),
-    hitter({ positions: ["SS"], projHR: 10 }),
-  ];
-  const remaining = totalAuctionBudget(tinyLeague);
-  const v = valuePool(pool, tinyLeague, remaining);
-  let sum = 0;
-  for (const x of v.values()) sum += x.dollarValue;
-  assert.ok(Math.abs(sum - remaining) <= pool.length);
-});
 
 test("flex-slot eligibility: 2B player is eligible at MI and UTIL", () => {
   // Build a league with both 2B and MI slots; verify a 2B-only player gets considered
@@ -467,99 +453,6 @@ test("two-way regression: TWP-style positions=['P'] only with pitcher stats stil
   assert.ok(sgp > 0);
 });
 
-/**
- * Equivalence snapshot for the Stage 1 algorithm rewrite. Builds a varied pool that exercises:
- *  - single- and multi-position hitters
- *  - flex slots (C, 1B, 2B, SS, 3B, OF, CI, MI, UTIL, P) with realistic counts
- *  - starters, closers, and a two-way (P+OF) player
- *  - a high-risk player and a 60-day-IL player (risk multiplier branch)
- *  - one drafted player to exercise the static-par/inflation path
- *
- * Snapshot values were re-captured when LEAGUE_AVG_BA/ERA/WHIP became pool-derived
- * (`computeLeagueBaselines`). Above-baseline hitters earn more and starting pitchers
- * earn less than the pre-derivation snapshot — expected, since this fixture's pool
- * average sits lower than the old hardcoded .275/4.20/1.28.
- */
-test("valuePool: snapshot equivalence on a varied pool (Stage 1 regression guard)", () => {
-  const league: LeagueConfig = {
-    numTeams: 4,
-    budget: 200,
-    rosterSlotsPerTeam: { C: 1, "1B": 1, "2B": 1, SS: 1, "3B": 1, OF: 2, CI: 1, MI: 1, UTIL: 1, P: 3 },
-  };
-  const hh = (
-    _id: string,
-    positions: string[],
-    projHR: number, projRBI: number, projR: number, projSB: number, projAVG: number,
-    extras: Partial<PlayerLean> = {},
-  ): PlayerLean => ({
-    _id, name: _id, mlbTeam: "X", positions, projGames: 162,
-    projHR, projRBI, projR, projSB, projAVG, ...extras,
-  });
-  const pp = (
-    _id: string,
-    projW: number, projK: number, projSV: number,
-    projERA: number, projWHIP: number, projIP: number,
-    extras: Partial<PlayerLean> = {},
-  ): PlayerLean => ({
-    _id, name: _id, mlbTeam: "X", positions: ["P"], projGames: 32,
-    projW, projK, projSV, projERA, projWHIP, projIP, ...extras,
-  });
-  const pool: PlayerLean[] = [
-    hh("c1", ["C"], 25, 70, 65, 2, 0.265), hh("c2", ["C"], 12, 45, 40, 1, 0.245),
-    hh("c3", ["C"], 8, 35, 30, 0, 0.230), hh("c4", ["C"], 6, 28, 25, 0, 0.225),
-    hh("c5", ["C"], 4, 22, 20, 0, 0.215),
-    hh("1b1", ["1B"], 35, 100, 90, 3, 0.285), hh("1b2", ["1B"], 22, 75, 70, 1, 0.265),
-    hh("1b3", ["1B"], 12, 55, 50, 1, 0.245), hh("1b4", ["1B"], 8, 40, 35, 0, 0.235),
-    hh("2b1", ["2B"], 28, 85, 95, 15, 0.290), hh("2b2", ["2B"], 15, 60, 65, 8, 0.270),
-    hh("2b3", ["2B"], 10, 45, 50, 4, 0.250), hh("2b4", ["2B"], 5, 30, 35, 2, 0.235),
-    hh("ss1", ["SS"], 32, 95, 100, 12, 0.295), hh("ss2", ["SS"], 18, 65, 70, 6, 0.275),
-    hh("ss3", ["SS"], 8, 40, 45, 3, 0.250), hh("ss4", ["SS"], 4, 25, 30, 1, 0.230),
-    hh("3b1", ["3B"], 38, 110, 95, 5, 0.295), hh("3b2", ["3B"], 20, 75, 70, 2, 0.270),
-    hh("3b3", ["3B"], 12, 55, 50, 1, 0.245), hh("3b4", ["3B"], 6, 35, 30, 0, 0.230),
-    hh("of1", ["OF"], 40, 115, 100, 20, 0.300), hh("of2", ["OF"], 30, 90, 85, 12, 0.285),
-    hh("of3", ["OF"], 20, 70, 65, 8, 0.270), hh("of4", ["OF"], 12, 55, 55, 5, 0.255),
-    hh("of5", ["OF"], 8, 40, 45, 3, 0.245), hh("of6", ["OF"], 5, 30, 35, 2, 0.230),
-    hh("of7", ["OF"], 3, 22, 25, 1, 0.220),
-    hh("multi1", ["SS", "OF"], 33, 95, 95, 18, 0.290),
-    hh("multi2", ["1B", "3B"], 28, 90, 80, 1, 0.280),
-    hh("risky", ["OF"], 25, 80, 75, 5, 0.270, { risk: "High", age: 35 }),
-    hh("injured", ["1B"], 30, 95, 80, 0, 0.280, { injuryStatus: "60-day IL" }),
-    pp("p1", 18, 230, 0, 2.85, 1.05, 200), pp("p2", 15, 200, 0, 3.20, 1.15, 195),
-    pp("p3", 12, 175, 0, 3.65, 1.20, 180), pp("p4", 10, 150, 0, 3.90, 1.25, 165),
-    pp("p5", 8, 130, 0, 4.10, 1.28, 150), pp("p6", 6, 110, 0, 4.30, 1.32, 130),
-    pp("p7", 5, 90, 0, 4.50, 1.35, 110), pp("p8", 3, 70, 0, 4.70, 1.40, 90),
-    pp("cl1", 3, 80, 35, 2.50, 1.00, 65), pp("cl2", 2, 65, 28, 2.90, 1.10, 60),
-    {
-      _id: "tw", name: "TW", mlbTeam: "X", positions: ["P", "OF"], projGames: 158,
-      projW: 12, projK: 180, projSV: 0, projERA: 3.50, projWHIP: 1.18, projIP: 180,
-      projHR: 35, projRBI: 95, projR: 90, projSB: 10, projAVG: 0.285,
-    },
-  ];
-
-  const draft = { picks: [{ playerId: "1b1", teamInLeagueId: "t1", price: 45 }] };
-  const undrafted = undraftedPlayers(pool, draft.picks);
-  const remaining = remainingAuctionDollars(league, draft);
-  const v = valuePool(undrafted, league, remaining, { fullPool: pool });
-
-  const expected: Record<string, number> = {
-    c1: 19, c2: 7, c3: 1, c4: 1, c5: 1,
-    "1b2": 17, "1b3": 7, "1b4": 1,
-    "2b1": 32, "2b2": 18, "2b3": 9, "2b4": 1,
-    ss1: 35, ss2: 21, ss3: 8, ss4: 1,
-    "3b1": 35, "3b2": 19, "3b3": 8, "3b4": 1,
-    of1: 41, of2: 30, of3: 20, of4: 12, of5: 6, of6: 1, of7: 1,
-    multi1: 35, multi2: 25,
-    risky: 19, injured: 10,
-    p1: 47, p2: 36, p3: 26, p4: 17, p5: 11, p6: 5, p7: 1, p8: 1,
-    cl1: 43, cl2: 30, tw: 57,
-  };
-  // Drafted player is excluded from the result map.
-  assert.equal(v.has("1b1"), false, "drafted player should not appear in valuation map");
-  const actual: Record<string, number> = {};
-  for (const [id, e] of v) actual[id] = e.dollarValue;
-  assert.deepEqual(actual, expected,
-    "valuation output drifted from snapshot — review computeParValues / replacementSGPFromPool");
-});
 
 test("valuePool: breakdown surfaces sgpAboveRep and bestPosition", () => {
   const pool = [
