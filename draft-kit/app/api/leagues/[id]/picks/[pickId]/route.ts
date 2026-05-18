@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { League } from "@/lib/models/League";
 import { DraftPick } from "@/lib/models/DraftPick";
+import { syncValuationSession } from "@/lib/valuation/syncSession";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 if (!JWT_SECRET) {
@@ -144,6 +145,8 @@ export async function PATCH(
     pick.teamName = nextTeamName;
     pick.price = Number(nextPrice);
     await pick.save();
+
+    void syncValuationSession(league);
 
     return NextResponse.json(
       { message: "Pick updated", pick },
