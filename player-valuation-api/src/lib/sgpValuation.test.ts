@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   computePlayerSGP,
+  computePlayerSGPParts,
   computeLeagueBaselines,
   riskMultiplier,
   valuePool,
@@ -285,20 +286,22 @@ test("riskMultiplier: 60-day IL crushes value", () => {
   assert.ok(riskMultiplier(p) <= 0.4);
 });
 
-test("riskMultiplier: age decline applies past 32 (hitter) and 31 (pitcher)", () => {
-  const oldHitter = hitter({ age: 36 });
-  const oldPitcher = pitcher({ age: 36 });
-  assert.ok(riskMultiplier(oldHitter) < 1);
-  assert.ok(riskMultiplier(oldPitcher) < riskMultiplier(oldHitter), "pitcher decline starts a year earlier");
+test("riskMultiplier: age alone does not haircut SGP (Steamer already models age)", () => {
+  // Age-decline used to compound on top of the projection; dropped to stop double-counting.
+  const youngClean = hitter({ age: 27 });
+  const oldClean   = hitter({ age: 38 });
+  assert.equal(riskMultiplier(youngClean), 1);
+  assert.equal(riskMultiplier(oldClean), 1);
 });
 
-test("riskMultiplier: never falls below 0.4 (no negative SGP risk)", () => {
+test("riskMultiplier: stacked signals compound but stay above 0.36", () => {
+  // 60-day IL × High risk = 0.4 * 0.9 = 0.36. Age no longer factors in.
   const stack = hitter({
     injuryStatus: "60-day IL",
     risk: "High",
     age: 42,
   });
-  assert.ok(riskMultiplier(stack) >= 0.28); // 0.4 * 0.9 * 0.7 (capped age)
+  assert.equal(riskMultiplier(stack), 0.4 * 0.9);
 });
 
 test("computePlayerSGP: high-risk player has lower SGP than identical clean player", () => {
@@ -637,4 +640,23 @@ test("valuePool: scope-divergent baselines move valuations", () => {
     vLow.get("target")!.dollarValue > vHigh.get("target")!.dollarValue,
     `low-BA pool target=$${vLow.get("target")!.dollarValue}, high-BA pool target=$${vHigh.get("target")!.dollarValue}`,
   );
+});
+
+test("priorYearWeight: age scales the prior pull (young trusts proj more than vet)", () => {
+  // Identical projection + identical (weaker) prior. Sample gate passes for both.
+  // Young player → smaller effective weight → SGP closer to proj-only (higher).
+  // Vet → larger effective weight → SGP pulled toward weaker prior (lower).
+  const base = {
+    projHR: 35, projRBI: 100, projR: 95, projSB: 5, projAVG: 0.290, projGames: 162,
+    prevHR: 18, prevRBI: 55, prevR: 50, prevSB: 2, prevAVG: 0.250, prevGames: 160,
+  };
+  const young = hitter({ ...base, age: 22 });
+  const mid   = hitter({ ...base, age: 28 });
+  const vet   = hitter({ ...base, age: 35 });
+  const w = 0.15;
+  const yS = computePlayerSGPParts(young, 12, undefined, undefined, w).total;
+  const mS = computePlayerSGPParts(mid,   12, undefined, undefined, w).total;
+  const vS = computePlayerSGPParts(vet,   12, undefined, undefined, w).total;
+  assert.ok(yS > mS, `young (${yS}) should exceed mid (${mS}) — less weight on weaker prior`);
+  assert.ok(mS > vS, `mid (${mS}) should exceed vet (${vS}) — vet pulled further toward weaker prior`);
 });
