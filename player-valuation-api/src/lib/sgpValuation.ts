@@ -168,7 +168,7 @@ export type LeagueConfig = {
    * Weight applied to the player's recent-history stats when blending into SGP.
    * The "prior" side is a per-season-equivalent combine of the last 3 seasons (see
    * fetchProjections.ts → combineHitterSeasons/combinePitcherSeasons). Defaults to
-   * 0.15 (85% projection / 15% prior). Each side (hitter/pitcher) is blended
+   * 0.20 (80% projection / 20% prior). Each side (hitter/pitcher) is blended
    * independently and the prior side is skipped if its sample is too thin.
    */
   priorYearWeight?: number;
@@ -176,7 +176,7 @@ export type LeagueConfig = {
 
 export const DEFAULT_HITTER_BUDGET_SHARE = 0.65;
 export const DEFAULT_FLEX_PREMIUM = 0.15;
-export const DEFAULT_PRIOR_YEAR_WEIGHT = 0.15;
+export const DEFAULT_PRIOR_YEAR_WEIGHT = 0.20;
 /**
  * Weight applied to Savant xBA / xERA when regressing the projection's rate stats.
  * Steamer already partially incorporates Statcast, so we keep the pull modest (20%)
