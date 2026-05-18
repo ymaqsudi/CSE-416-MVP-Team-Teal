@@ -187,6 +187,20 @@ export function Navbar() {
 
           {isHydrated && user ? (
             <Link
+              href="/create-league"
+              className={cn(
+                "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                pathname === "/create-league"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              Create League
+            </Link>
+          ) : null}
+
+          {isHydrated && user && leagues.length > 0 ? (
+            <Link
               href="/league-settings"
               className={cn(
                 "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",

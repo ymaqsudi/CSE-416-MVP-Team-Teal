@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -15,10 +14,13 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 
+type Team = { id: string; name: string };
+
 type League = {
   _id: string;
   leagueName: string;
   budget: number;
+  teams?: Team[];
 };
 
 type RosterEntry = {
@@ -34,13 +36,10 @@ type RosterEntry = {
 
 export default function RosterPage() {
   const [token, setToken] = useState<string | null>(null);
-  const [leagues, setLeagues] = useState<League[]>([]);
-  const [selectedLeagueId, setSelectedLeagueId] = useState<string>("");
+  const [league, setLeague] = useState<League | null>(null);
   const [teamName, setTeamName] = useState<string>("");
-  const [teamNameInput, setTeamNameInput] = useState<string>("");
 
   const [roster, setRoster] = useState<RosterEntry[]>([]);
-  const [budget, setBudget] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [leaguesLoading, setLeaguesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,19 +62,14 @@ export default function RosterPage() {
         });
         const data = await res.json();
         if (res.ok) {
-          const fetchedLeagues = data.leagues ?? [];
-          setLeagues(fetchedLeagues);
-        
+          const fetchedLeagues: League[] = data.leagues ?? [];
           if (fetchedLeagues.length > 0) {
             const storedLeagueId = localStorage.getItem("draftkit_leagueId");
-        
-            const selectedLeague =
-              fetchedLeagues.find((league: League) => league._id === storedLeagueId) ??
+            const active =
+              fetchedLeagues.find((l) => l._id === storedLeagueId) ??
               fetchedLeagues[0];
-        
-            setSelectedLeagueId(selectedLeague._id);
-            setBudget(selectedLeague.budget);
-            localStorage.setItem("draftkit_leagueId", selectedLeague._id);
+            setLeague(active);
+            localStorage.setItem("draftkit_leagueId", active._id);
           }
         }
       } catch (e) {
@@ -114,29 +108,19 @@ export default function RosterPage() {
     [token],
   );
 
-  function handleLeagueChange(id: string) {
-    setSelectedLeagueId(id);
-    localStorage.setItem("draftkit_leagueId", id);
-
-    const league = leagues.find((l) => l._id === id);
-    if (league) setBudget(league.budget);
+  function handleTeamChange(name: string) {
+    setTeamName(name);
     setRoster([]);
-    setTeamName("");
-    setTeamNameInput("");
     setError(null);
-  }
-
-  function handleLoadRoster() {
-    setTeamName(teamNameInput.trim());
-    fetchRoster(selectedLeagueId, teamNameInput);
+    if (league) fetchRoster(league._id, name);
   }
 
   async function handleUnassign(entry: RosterEntry) {
-    if (!token) return;
+    if (!token || !league) return;
     setUnassigning(entry._id);
     try {
       const res = await fetch(
-        `/api/players/${entry.playerId}/assignment?leagueId=${selectedLeagueId}&teamName=${encodeURIComponent(teamName)}&position=${encodeURIComponent(entry.position)}`,
+        `/api/players/${entry.playerId}/assignment?leagueId=${league._id}&teamName=${encodeURIComponent(teamName)}&position=${encodeURIComponent(entry.position)}`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },
@@ -156,9 +140,11 @@ export default function RosterPage() {
     }
   }
 
+  const budget = league?.budget ?? 0;
   const spent = roster.reduce((sum, r) => sum + r.price, 0);
   const remaining = budget - spent;
   const maxBid = remaining - 1;
+  const teams = league?.teams ?? [];
 
   if (!token && !leaguesLoading) {
     return (
@@ -178,69 +164,45 @@ export default function RosterPage() {
         <p className="text-sm text-muted-foreground mt-1">
           {teamName
             ? `${roster.length} players assigned — ${teamName}`
-            : "Select a league and team to view your roster"}
+            : "Select a team to view its roster"}
         </p>
       </div>
 
-      {/* League + Team selector */}
+      {/* Team selector (league is set in the navbar) */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1">
               <label className="text-sm font-medium text-foreground mb-1 block">
-                League
+                Team
               </label>
               {leaguesLoading ? (
                 <div className="flex items-center gap-2 text-muted-foreground text-sm">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading leagues…
+                  Loading…
                 </div>
-              ) : leagues.length === 0 ? (
+              ) : !league ? (
                 <p className="text-sm text-muted-foreground">
-                  No leagues found. Create one in League Settings.
+                  No league selected. Create or select one from the navbar.
+                </p>
+              ) : teams.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  This league has no teams configured.
                 </p>
               ) : (
-                <Select
-                  value={selectedLeagueId}
-                  onValueChange={handleLeagueChange}
-                >
+                <Select value={teamName} onValueChange={handleTeamChange}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select league" />
+                    <SelectValue placeholder="Select team" />
                   </SelectTrigger>
                   <SelectContent>
-                    {leagues.map((l) => (
-                      <SelectItem key={l._id} value={l._id}>
-                        {l.leagueName}
+                    {teams.map((t) => (
+                      <SelectItem key={t.id} value={t.name}>
+                        {t.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
-            </div>
-
-            <div className="flex-1">
-              <label className="text-sm font-medium text-foreground mb-1 block">
-                Team Name
-              </label>
-              <Input
-                placeholder="Enter your team name"
-                value={teamNameInput}
-                onChange={(e) => setTeamNameInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLoadRoster()}
-              />
-            </div>
-
-            <div className="flex items-end">
-              <Button
-                onClick={handleLoadRoster}
-                disabled={loading || !selectedLeagueId || !teamNameInput.trim()}
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Load Roster"
-                )}
-              </Button>
             </div>
           </div>
         </CardContent>

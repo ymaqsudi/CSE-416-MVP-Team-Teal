@@ -61,14 +61,24 @@ export default function PlayerDetailPage({
 
   // Assignment dialog state
   const [showAssignDialog, setShowAssignDialog] = useState(false);
-  const [leagues, setLeagues] = useState<any[]>([]);
-  const [selectedLeague, setSelectedLeague] = useState<string>("");
+  const [activeLeague, setActiveLeague] = useState<{
+    _id: string;
+    leagueName: string;
+    budget: number;
+    mainRosterSlots?: number;
+    teams?: { id: string; name: string }[];
+  } | null>(null);
   const [teamName, setTeamName] = useState<string>("");
   const [position, setPosition] = useState<string>("");
   const [price, setPrice] = useState<string>("");
   const [assignLoading, setAssignLoading] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
   const [activeLeagueId, setActiveLeagueId] = useState<string>("");
+  const [teamRosterTotals, setTeamRosterTotals] = useState<{
+    spent: number;
+    pickCount: number;
+  } | null>(null);
+  const [teamRosterLoading, setTeamRosterLoading] = useState(false);
   const [playerNote, setPlayerNote] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [noteSaving, setNoteSaving] = useState(false);
@@ -129,12 +139,13 @@ export default function PlayerDetailPage({
   }, [id, isCustomPlayer, customPlayerId]);
 
   useEffect(() => {
-    async function fetchLeagues() {
+    async function fetchActiveLeague() {
       if (!showAssignDialog) return;
 
       try {
         const token = localStorage.getItem("draftkit_token");
-        if (!token) return;
+        const leagueId = localStorage.getItem("draftkit_leagueId");
+        if (!token || !leagueId) return;
 
         const response = await fetch("/api/leagues", {
           headers: {
@@ -144,14 +155,45 @@ export default function PlayerDetailPage({
 
         const data = await response.json();
         if (response.ok) {
-          setLeagues(data.leagues || []);
+          const found = (data.leagues || []).find(
+            (l: { _id: string }) => l._id === leagueId,
+          );
+          setActiveLeague(found ?? null);
         }
       } catch (e) {
-        console.error("Failed to load leagues:", e);
+        console.error("Failed to load active league:", e);
       }
     }
-    fetchLeagues();
+    fetchActiveLeague();
   }, [showAssignDialog]);
+
+  // Load the selected team's totals so we can show the max draft amount.
+  useEffect(() => {
+    async function fetchTeamTotals() {
+      setTeamRosterTotals(null);
+      if (!showAssignDialog || !activeLeague || !teamName) return;
+      const token = localStorage.getItem("draftkit_token");
+      if (!token) return;
+      try {
+        setTeamRosterLoading(true);
+        const res = await fetch(
+          `/api/leagues/${activeLeague._id}/roster?teamName=${encodeURIComponent(teamName)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const data = await res.json();
+        if (res.ok) {
+          const entries: { price: number }[] = data.roster ?? [];
+          const spent = entries.reduce((s, e) => s + (Number(e.price) || 0), 0);
+          setTeamRosterTotals({ spent, pickCount: entries.length });
+        }
+      } catch (e) {
+        console.error("Failed to load team totals:", e);
+      } finally {
+        setTeamRosterLoading(false);
+      }
+    }
+    fetchTeamTotals();
+  }, [showAssignDialog, activeLeague, teamName]);
 
   useEffect(() => {
     const storedLeagueId = localStorage.getItem("draftkit_leagueId");
@@ -200,7 +242,7 @@ export default function PlayerDetailPage({
   }, [activeLeagueId, id]);
 
   async function handleAssignPlayer() {
-    if (!player || !selectedLeague || !teamName.trim() || !position || !price) {
+    if (!player || !activeLeague || !teamName.trim() || !position || !price) {
       setAssignError("All fields are required");
       return;
     }
@@ -222,7 +264,7 @@ export default function PlayerDetailPage({
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          leagueId: selectedLeague,
+          leagueId: activeLeague._id,
           teamName: teamName.trim(),
           position,
           price: Number(price),
@@ -242,7 +284,6 @@ export default function PlayerDetailPage({
       // Success - close dialog and reset form
       const assignedTeam = teamName.trim();
       setShowAssignDialog(false);
-      setSelectedLeague("");
       setTeamName("");
       setPosition("");
       setPrice("");
@@ -811,30 +852,30 @@ export default function PlayerDetailPage({
           </DialogHeader>
 
           <div className="space-y-4">
+            {activeLeague ? (
+              <p className="text-xs text-muted-foreground">
+                League: <span className="font-medium">{activeLeague.leagueName}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No active league selected. Pick one from the navbar.
+              </p>
+            )}
+
             <div>
-              <Label htmlFor="league">League</Label>
-              <Select value={selectedLeague} onValueChange={setSelectedLeague}>
+              <Label htmlFor="team">Team</Label>
+              <Select value={teamName} onValueChange={setTeamName}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a league" />
+                  <SelectValue placeholder="Select team" />
                 </SelectTrigger>
                 <SelectContent>
-                  {leagues.map((league) => (
-                    <SelectItem key={league._id} value={league._id}>
-                      {league.leagueName}
+                  {(activeLeague?.teams ?? []).map((t) => (
+                    <SelectItem key={t.id} value={t.name}>
+                      {t.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="team">Team Name</Label>
-              <Input
-                id="team"
-                placeholder="Enter team name"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-              />
             </div>
 
             <div>
@@ -861,6 +902,29 @@ export default function PlayerDetailPage({
                 onChange={(e) => setPrice(e.target.value)}
                 min="0"
               />
+              {activeLeague && teamName && teamRosterTotals ? (() => {
+                const rosterSize = Number(activeLeague.mainRosterSlots) || 23;
+                const remainingSlots = Math.max(
+                  rosterSize - teamRosterTotals.pickCount,
+                  1,
+                );
+                const maxBid = Math.max(
+                  activeLeague.budget - teamRosterTotals.spent - (remainingSlots - 1),
+                  0,
+                );
+                const isFull = teamRosterTotals.pickCount >= rosterSize;
+                return (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {isFull
+                      ? `${teamName} roster is full (${rosterSize} slots).`
+                      : `Max draft amount for ${teamName}: $${maxBid}`}
+                  </p>
+                );
+              })() : teamRosterLoading ? (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Loading team budget…
+                </p>
+              ) : null}
             </div>
 
             {assignError && (
