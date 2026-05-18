@@ -146,7 +146,7 @@ export async function PATCH(
     pick.price = Number(nextPrice);
     await pick.save();
 
-    void syncValuationSession(league);
+    await syncValuationSession(league);
 
     return NextResponse.json(
       { message: "Pick updated", pick },

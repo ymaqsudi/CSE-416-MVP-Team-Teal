@@ -201,7 +201,7 @@ export async function PATCH(
     const updatedLeague = await league.save();
     console.log("After save mainRosterSlots:", updatedLeague.mainRosterSlots);
 
-    void syncValuationSession(updatedLeague);
+    await syncValuationSession(updatedLeague);
 
     return NextResponse.json(
       {

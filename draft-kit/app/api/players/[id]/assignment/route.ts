@@ -179,7 +179,7 @@ export async function POST(
       assignedBy: decoded.userId,
     });
 
-    void syncValuationSession(league);
+    await syncValuationSession(league);
 
     return NextResponse.json(
       {
@@ -260,7 +260,7 @@ export async function DELETE(
       );
     }
 
-    void syncValuationSession(league);
+    await syncValuationSession(league);
 
     return NextResponse.json(
       {

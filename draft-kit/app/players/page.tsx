@@ -107,6 +107,7 @@ export default function PlayersPage() {
   const [leagueRosterSlots, setLeagueRosterSlots] = useState<Record<string, number> | null>(null);
   const [leagueNumTeams, setLeagueNumTeams] = useState<number | null>(null);
   const [leagueBudget, setLeagueBudget] = useState<number | null>(null);
+  const [valuationSessionId, setValuationSessionId] = useState<string | null>(null);
   const [customPlayers, setCustomPlayers] = useState<Player[]>([]);
   const [showAddPlayerDialog, setShowAddPlayerDialog] = useState(false);
   const [addPlayerLoading, setAddPlayerLoading] = useState(false);
@@ -148,6 +149,7 @@ export default function PlayersPage() {
         if (encodedSlots) params.set("rosterSlots", encodedSlots);
         if (leagueNumTeams != null) params.set("numTeams", String(leagueNumTeams));
         if (leagueBudget != null) params.set("budget", String(leagueBudget));
+        if (valuationSessionId) params.set("sessionId", valuationSessionId);
         const qs = params.toString() ? `?${params.toString()}` : "";
         const res = await fetch(`/api/valuation/valuations/all${qs}`);
         if (!res.ok) return;
@@ -162,7 +164,7 @@ export default function PlayersPage() {
       }
     }
     fetchValuations();
-  }, [leagueScope, leagueCategories, leagueRosterSlots, leagueNumTeams, leagueBudget]);
+  }, [leagueScope, leagueCategories, leagueRosterSlots, leagueNumTeams, leagueBudget, valuationSessionId]);
 
   useEffect(() => {
     const storedLeagueId = localStorage.getItem("draftkit_leagueId");
@@ -183,7 +185,7 @@ export default function PlayersPage() {
         if (!res.ok) return;
         const data = await res.json();
         const league =
-          (data.leagues ?? []).find((l: { _id: string; rosterSlots?: Record<string, number>; teamCount?: number; budget?: number }) => l._id === leagueId) ??
+          (data.leagues ?? []).find((l: { _id: string; rosterSlots?: Record<string, number>; teamCount?: number; budget?: number; valuationSessionId?: string }) => l._id === leagueId) ??
           data.leagues?.[0];
         if (league?.scope === "AL" || league?.scope === "NL" || league?.scope === "MLB") {
           setLeagueScope(league.scope);
@@ -199,6 +201,9 @@ export default function PlayersPage() {
         }
         if (typeof league?.budget === "number" && league.budget > 0) {
           setLeagueBudget(league.budget);
+        }
+        if (typeof league?.valuationSessionId === "string") {
+          setValuationSessionId(league.valuationSessionId);
         }
       } catch (e) {
         console.error("Failed to load league scope:", e);

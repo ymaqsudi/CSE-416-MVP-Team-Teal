@@ -201,7 +201,7 @@ export async function POST(
       pickNumber: pickCount + 1,
     });
 
-    void syncValuationSession(league);
+    await syncValuationSession(league);
 
     return NextResponse.json(
       { message: "Pick recorded successfully", pick },
@@ -257,7 +257,7 @@ export async function DELETE(
       return NextResponse.json({ error: "No picks to undo" }, { status: 404 });
     }
 
-    void syncValuationSession(league);
+    await syncValuationSession(league);
 
     return NextResponse.json(
       { message: "Last pick undone successfully", pick: lastPick },
