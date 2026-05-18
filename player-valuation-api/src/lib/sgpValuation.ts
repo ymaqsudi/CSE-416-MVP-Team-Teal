@@ -172,6 +172,12 @@ export type LeagueConfig = {
 export const DEFAULT_HITTER_BUDGET_SHARE = 0.68;
 export const DEFAULT_FLEX_PREMIUM = 0.15;
 export const DEFAULT_PRIOR_YEAR_WEIGHT = 0.15;
+/**
+ * Weight applied to Savant xBA / xERA when regressing the projection's rate stats.
+ * Steamer already partially incorporates Statcast, so we keep the pull modest (20%)
+ * to nudge the projection toward batted-ball reality without double-counting.
+ */
+export const SAVANT_REGRESSION_WEIGHT = 0.20;
 
 /** Sample-size gates for blending prior-year SGP. Below these, prev side is ignored. */
 const PRIOR_HITTER_GAMES_THRESHOLD = 50;
@@ -407,6 +413,24 @@ export type PlayerSGPParts = {
 };
 
 /**
+ * Pull the projection's rate stats toward Statcast expected values (xBA, xERA).
+ * Applied only to the projection-side SGP — the prior-side path runs through
+ * `playerAsPrev` and must not inherit a current-batted-ball regression on top of
+ * historical stats. No-op when the xStat is missing.
+ */
+function applySavantRegression(p: PlayerLean): PlayerLean {
+  const w = SAVANT_REGRESSION_WEIGHT;
+  let out: PlayerLean = p;
+  if (p.projAVG != null && p.xba != null && Number.isFinite(p.xba)) {
+    out = { ...out, projAVG: (1 - w) * p.projAVG + w * p.xba };
+  }
+  if (p.projERA != null && p.xera != null && Number.isFinite(p.xera)) {
+    out = { ...out, projERA: (1 - w) * p.projERA + w * p.xera };
+  }
+  return out;
+}
+
+/**
  * Synthetic view of a player with last year's stats slotted into the `proj*` fields
  * so the standard hitterSGP/pitcherSGP formulas can be reused without forking.
  * `projGames` ← `prevGames` and `projIP` ← `prevIP` preserve the availability haircut
@@ -456,15 +480,18 @@ export function computePlayerSGPParts(
 ): PlayerSGPParts {
   const denom = getDenominators(numTeams);
   const cats = categorySet(categories);
+  // Projection-side: pull rate stats toward Statcast xBA / xERA. Prior-side calls below
+  // use playerAsPrev(p) and must stay on the un-regressed object.
+  const proj = applySavantRegression(p);
   let hitter = 0;
   let pitcher = 0;
-  if (isPitcher(p) && hasPitcherStats(p)) pitcher = pitcherSGP(p, denom, cats, baselines);
-  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) hitter = hitterSGP(p, denom, cats, baselines);
+  if (isPitcher(p) && hasPitcherStats(p)) pitcher = pitcherSGP(proj, denom, cats, baselines);
+  if (p.positions.some((x) => x !== "P") && hasHitterStats(p)) hitter = hitterSGP(proj, denom, cats, baselines);
   // Fallback: positions array is pitcher-only but no pitcher stats present → treat as hitter
   // if hitter stats exist, else 0. Keeps legacy single-position synthetic fixtures working.
   if (hitter === 0 && pitcher === 0) {
-    if (hasHitterStats(p)) hitter = hitterSGP(p, denom, cats, baselines);
-    else if (hasPitcherStats(p)) pitcher = pitcherSGP(p, denom, cats, baselines);
+    if (hasHitterStats(p)) hitter = hitterSGP(proj, denom, cats, baselines);
+    else if (hasPitcherStats(p)) pitcher = pitcherSGP(proj, denom, cats, baselines);
   }
   if (priorYearWeight > 0) {
     const prev = playerAsPrev(p);
