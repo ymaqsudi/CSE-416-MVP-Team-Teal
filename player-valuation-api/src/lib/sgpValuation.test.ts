@@ -642,10 +642,9 @@ test("valuePool: scope-divergent baselines move valuations", () => {
   );
 });
 
-test("priorYearWeight: age scales the prior pull (young trusts proj more than vet)", () => {
-  // Identical projection + identical (weaker) prior. Sample gate passes for both.
-  // Young player → smaller effective weight → SGP closer to proj-only (higher).
-  // Vet → larger effective weight → SGP pulled toward weaker prior (lower).
+test("priorYearWeight: blend is age-agnostic (same prior pull regardless of age)", () => {
+  // Steamer already models age curves, so the prior weight no longer scales by age.
+  // Same projection + same prior + same weight → identical SGP across age groups.
   const base = {
     projHR: 35, projRBI: 100, projR: 95, projSB: 5, projAVG: 0.290, projGames: 162,
     prevHR: 18, prevRBI: 55, prevR: 50, prevSB: 2, prevAVG: 0.250, prevGames: 160,
@@ -657,6 +656,6 @@ test("priorYearWeight: age scales the prior pull (young trusts proj more than ve
   const yS = computePlayerSGPParts(young, 12, undefined, undefined, w).total;
   const mS = computePlayerSGPParts(mid,   12, undefined, undefined, w).total;
   const vS = computePlayerSGPParts(vet,   12, undefined, undefined, w).total;
-  assert.ok(yS > mS, `young (${yS}) should exceed mid (${mS}) — less weight on weaker prior`);
-  assert.ok(mS > vS, `mid (${mS}) should exceed vet (${vS}) — vet pulled further toward weaker prior`);
+  assert.equal(yS, mS);
+  assert.equal(mS, vS);
 });

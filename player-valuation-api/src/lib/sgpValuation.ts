@@ -354,8 +354,8 @@ export function riskMultiplier(p: PlayerLean): number {
 
   // Age-decline used to compound here, but Steamer's projections already model age
   // curves — applying a second haircut on top double-counted the effect, dropping
-  // older players' values disproportionately. The age signal lives in the projection
-  // (and in the prior-year blend weight, see priorWeightForAge); not here.
+  // older players' values disproportionately. The age signal lives in the projection;
+  // not here, and not in the prior-year blend weight (which is age-agnostic).
 
   return mult;
 }
@@ -417,21 +417,6 @@ export type PlayerSGPParts = {
   /** Sum used everywhere SGP was previously a single number. */
   total: number;
 };
-
-/**
- * Age-adjusted scale on the prior-year blend weight. Young players are still developing —
- * projections that model growth are more predictive than their two-season history. Veterans
- * have stabilized — their history carries more signal than a projection's age-based fade.
- * Returns the configured base weight scaled by an age factor; unknown age uses the base.
- */
-function priorWeightForAge(age: number | null | undefined, baseWeight: number): number {
-  if (age == null || !Number.isFinite(age)) return baseWeight;
-  let factor: number;
-  if (age <= 24) factor = 0.33;          // ~5% effective at the 15% default
-  else if (age >= 32) factor = 1.67;     // ~25% effective at the 15% default
-  else factor = 1.0;                     // 25–31: unchanged baseline
-  return Math.max(0, Math.min(1, baseWeight * factor));
-}
 
 /**
  * Pull the projection's rate stats toward Statcast expected values (xBA, xERA).
@@ -516,7 +501,7 @@ export function computePlayerSGPParts(
   }
   if (priorYearWeight > 0) {
     const prev = playerAsPrev(p);
-    const w = priorWeightForAge(p.age, priorYearWeight);
+    const w = priorYearWeight;
     if (hasPriorHitterSample(p) && hitter > 0) {
       hitter = (1 - w) * hitter + w * hitterSGP(prev, denom, cats, baselines);
     }
