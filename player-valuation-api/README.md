@@ -1,6 +1,8 @@
 # Player Valuation API
 
-REST API for MLB player data and rotisserie SGP dollar valuations. Deployed at **https://four16-teal-player-api.onrender.com**.
+REST API for MLB player data and rotisserie SGP dollar valuations. 
+
+Deployed URL: **https://four16-teal-player-api.onrender.com**.
 
 ## Authentication
 
@@ -11,6 +13,10 @@ x-license-key: <your-license-key>
 ```
 
 License keys are issued through the **Developer Portal** at `/portal`. Register a developer account there to create and manage keys. Each key has a configurable per-window rate limit; requests that exceed it return `429`.
+
+For testing the deployed API, use the deployed portal link to create an account and a key:
+
+Deployed Portal Link: https://four16-teal-player-api.onrender.com/portal
 
 ## Run Locally
 
