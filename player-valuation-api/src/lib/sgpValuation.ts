@@ -157,8 +157,9 @@ export type LeagueConfig = {
   categories?: string[];
   /**
    * Fraction of the distributable auction budget reserved for hitters.
-   * Pitchers receive `1 - hitterBudgetShare`. Defaults to 0.68 — the midpoint
-   * of the 65-70% industry convention for 5x5 with 14H/9P rosters.
+   * Pitchers receive `1 - hitterBudgetShare`. Defaults to 0.65 — the low end
+   * of the 65-70% industry convention, chosen to match NFBC AAV which tends
+   * to allocate more dollars to pitching than the midpoint.
    */
   hitterBudgetShare?: number;
   /**
@@ -177,7 +178,7 @@ export type LeagueConfig = {
   priorYearWeight?: number;
 };
 
-export const DEFAULT_HITTER_BUDGET_SHARE = 0.68;
+export const DEFAULT_HITTER_BUDGET_SHARE = 0.65;
 export const DEFAULT_FLEX_PREMIUM = 0.15;
 export const DEFAULT_PRIOR_YEAR_WEIGHT = 0.15;
 /**
