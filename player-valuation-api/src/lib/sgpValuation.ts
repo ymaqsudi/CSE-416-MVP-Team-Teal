@@ -14,10 +14,10 @@ export const DEFAULT_DISPLAY_LEAGUE: LeagueConfig = {
 
 /**
  * 12-team baseline denominators (course materials).
- * Counting-stat denominators scale roughly linearly with league size — wider category
+ * Counting-stat denominators scale linearly with league size — wider category
  * distributions in deeper leagues mean a larger gap per standings point. Rate-stat
- * denominators are left invariant; their league-size sensitivity is small enough that
- * a fixed value is closer to right than a poorly-estimated scaler.
+ * denominators scale inversely by sqrt(12/numTeams) — deeper leagues average over
+ * more PA/IP per team, which compresses the spread between adjacent standings ranks.
  */
 type Denominators = {
   HR: number;
@@ -51,15 +51,19 @@ const BASE_DENOM_12T: Denominators = {
 
 function getDenominators(numTeams: number): Denominators {
   const factor = numTeams / 12;
+  // Rate-stat spread shrinks in deeper leagues — more PA/IP per team averages out variance.
+  // Scale inversely by sqrt(12/numTeams) since standings spread tracks std-dev, not mean.
+  // Stays at 1.0 for 12 teams; ~0.89× for 15, ~1.10× for 10 — mild but non-zero correction.
+  const rateFactor = Math.sqrt(12 / numTeams);
   return {
     HR: BASE_DENOM_12T.HR * factor,
     RBI: BASE_DENOM_12T.RBI * factor,
     R: BASE_DENOM_12T.R * factor,
     SB: BASE_DENOM_12T.SB * factor,
-    AVG: BASE_DENOM_12T.AVG,
+    AVG: BASE_DENOM_12T.AVG * rateFactor,
     W: BASE_DENOM_12T.W * factor,
-    ERA: BASE_DENOM_12T.ERA,
-    WHIP: BASE_DENOM_12T.WHIP,
+    ERA: BASE_DENOM_12T.ERA * rateFactor,
+    WHIP: BASE_DENOM_12T.WHIP * rateFactor,
     K: BASE_DENOM_12T.K * factor,
     SV: BASE_DENOM_12T.SV * factor,
   };
